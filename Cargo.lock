@@ -1,0 +1,20 @@
+[root]
+name = "raytracer"
+version = "0.0.1"
+dependencies = [
+ "png 0.1.0 (git+https://github.com/servo/rust-png)",
+]
+
+[[package]]
+name = "png"
+version = "0.1.0"
+source = "git+https://github.com/servo/rust-png#f060a2d9484a150de286f930eb80f9f3bff3ea38"
+dependencies = [
+ "png-sys 1.6.3 (git+https://github.com/servo/libpng?ref=servo)",
+]
+
+[[package]]
+name = "png-sys"
+version = "1.6.3"
+source = "git+https://github.com/servo/libpng?ref=servo#d01f32b4eb86904695efe7fc02b574f902e21a98"
+
