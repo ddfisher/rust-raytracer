@@ -87,10 +87,16 @@ impl Image {
 
     // TODO: try to remove some copying?
     fn to_png_image(&self) -> png::Image {
+        let mut pixel_vector: Vec<u8> = Vec::with_capacity(self.width * self.height * 3);
+        for pixel in self.pixels.iter() {
+            pixel_vector.push(pixel.red);
+            pixel_vector.push(pixel.green);
+            pixel_vector.push(pixel.blue);
+        }
         png::Image {
             width: from_uint(self.width).expect("width number out of range for u32"),
             height: from_uint(self.height).expect("height number out of range for u32"),
-            pixels: png::PixelsByColorType::RGB8(self.pixels.iter().flat_map(|ref p| p.bytes().into_iter()).collect())
+            pixels: png::PixelsByColorType::RGB8(pixel_vector)
         }
     }
 }
@@ -422,18 +428,26 @@ fn setup_scene() -> Scene {
             }
         ],
         lights: vec![
+            // Light::Direction {
+            //     direction: Vector {
+            //         dx: -2.0,
+            //         dy: -1.0,
+            //         dz: 0.0
+            //     },
+            //     intensity: 0.2
+            // },
+            // Light::Direction {
+            //     direction: Vector {
+            //         dx: 1.5,
+            //         dy: -3.0,
+            //         dz: 1.0
+            //     },
+            //     intensity: 0.8
+            // }
             Light::Direction {
                 direction: Vector {
-                    dx: -2.0,
-                    dy: -1.0,
-                    dz: 0.0
-                },
-                intensity: 0.2
-            },
-            Light::Direction {
-                direction: Vector {
-                    dx: 1.5,
-                    dy: -3.0,
+                    dx: 0.0,
+                    dy: 0.0,
                     dz: 1.0
                 },
                 intensity: 0.8
