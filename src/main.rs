@@ -257,6 +257,7 @@ struct MaterialProperties {
 
 // TODO: consider other values of epsilon
 static EPSILON: f32 = 0.0000001;
+static SELF_INTERSECT_OFFSET: f32 = 0.00001;
 
 impl SceneObject {
     fn hit(&self, &Ray{origin: ref o, direction: ref d}: &Ray) -> Option<Point> {
@@ -270,10 +271,19 @@ impl SceneObject {
                 let discriminant = d.dot(&offset).powi(2) - offset.length().powi(2) + radius.powi(2);
                 if discriminant < 0.0 {
                     None
-                } else if discriminant == 0.0 {
-                    Some(*o + d.times(initial))
                 } else {
-                    Some(*o + d.times(FloatMath::min(initial + discriminant, initial - discriminant)))
+                    let radical = discriminant.sqrt();
+                    let farther_distance = initial + radical;
+                    let closer_distance = initial - radical;
+                    if farther_distance < 0.0 {
+                        // both intersection points are behind the ray
+                        None
+                    } else if closer_distance < 0.0 {
+                        // the closer intersection point is behind the ray, so use the farther one
+                        Some(farther_distance)
+                    } else {
+                        Some(closer_distance)
+                    }.map(|dist| *o + d.times(dist))
                 }
             },
             Shape::Plane {ref point, ref normal} => {
@@ -321,8 +331,13 @@ struct Scene {
 impl Scene {
     fn hit(&self, ray: &Ray) -> Option<(Point, &SceneObject)> {
         self.objects.iter()
-            .filter_map(|obj| obj.hit(ray).map(|p| (p,obj)))//.inspect(|&(ref p,_)| println!("{}", p))
+            .filter_map(|obj| obj.hit(ray).map(|p| (p,obj)))
             .min_by(|&(ref p,_)| OrderedF32(p.distance(&ray.origin)))
+    }
+
+    fn hit_any(&self, ray: &Ray) -> bool {
+        self.objects.iter()
+            .any(|obj| obj.hit(ray).is_some())
     }
 }
 
@@ -395,34 +410,34 @@ fn setup_scene() -> Scene {
                 },
                 properties: MaterialProperties {
                     color: Color {
-                        red: 0x00,
-                        green: 0x00,
-                        blue: 0xFF
+                        red: 0x50,
+                        green: 0x30,
+                        blue: 0xA0
                     },
                     specular: 0.0,
                     diffuse: 1.0,
                     ambient: 0.2,
-                    shininess: 3.0
+                    shininess: 2.0
                 }
             }
         ],
         lights: vec![
             Light::Direction {
                 direction: Vector {
-                    dx: 0.0,
+                    dx: -2.0,
                     dy: -1.0,
                     dz: 0.0
                 },
-                intensity: 1.0
+                intensity: 0.2
             },
-            // Light::Direction {
-            //     direction: Vector {
-            //         dx: -0.5,
-            //         dy: -0.5,
-            //         dz: -1.0
-            //     },
-            //     intensity: 1.0
-            // }
+            Light::Direction {
+                direction: Vector {
+                    dx: 1.5,
+                    dy: -3.0,
+                    dz: 1.0
+                },
+                intensity: 0.8
+            }
         ]
     }
 }
@@ -442,10 +457,15 @@ fn ray_to_color(ray: &Ray, scene: &Scene) -> Color {
         (diffuse_color + specular_color) * light.intensity_for(point)
     }
 
+    // TODO: remove duplicate normal calls
     match scene.hit(ray) {
         Some((point, obj)) => {
             let ambient = obj.properties.color * obj.properties.ambient;
             ambient + scene.lights.iter()
+                .filter(|l| {
+                    let purturbed_point = point + obj.normal_at(&point).times(SELF_INTERSECT_OFFSET);
+                    !scene.hit_any(&Ray {direction: l.vector_for(&purturbed_point), origin: purturbed_point})
+                })
                 .map(|l| light_contribution(l, &point, obj, ray))
                 .fold(Color::black(), |a, b| a + b)
         },
