@@ -4,26 +4,71 @@
 extern crate png;
 
 use std::vec::Vec;
-use std::num::{from_uint, Float, FloatMath};
+use std::num::{from_uint, Float, Int, FloatMath};
 
 //TODO: consider making multithreaded
 
-#[deriving(Clone)]
-struct Pixel {
+// TODO: consider using a more fine grained Color for computation
+#[deriving(Show, Clone)]
+struct Color {
     red: u8,
     green: u8,
     blue: u8
 }
 
+impl Add<Color, Color> for Color {
+    fn add(&self, other: &Color) -> Color {
+        Color {
+            red:   self.red.saturating_add(other.red),
+            green: self.green.saturating_add(other.green),
+            blue:  self.blue.saturating_add(other.blue)
+        }
+    }
+}
+
+impl Sub<Color, Color> for Color {
+    fn sub(&self, other: &Color) -> Color {
+        Color {
+            red:   self.red.saturating_sub(other.red),
+            green: self.green.saturating_sub(other.green),
+            blue:  self.blue.saturating_sub(other.blue)
+        }
+    }
+}
+
+impl Mul<f32, Color> for Color {
+    fn mul(&self, &f: &f32) -> Color {
+        fn mul_sat(n: u8, f: f32) -> u8 {
+            let p = n as f32 * f;
+            let max: u8 = Int::max_value();
+            if p >= (max + 1) as f32 { p as u8 } else { 0xFF }
+        }
+
+        Color {
+            red:   mul_sat(self.red,   f),
+            green: mul_sat(self.green, f),
+            blue:  mul_sat(self.blue,  f)
+        }
+    }
+}
+
 struct Image {
     width: uint,
     height: uint,
-    pixels: Vec<Pixel>
+    pixels: Vec<Color>
 }
 
-impl Pixel {
-    fn new(r: u8, g: u8, b: u8) -> Pixel {
-        Pixel { red: r, green: g, blue: b }
+impl Color {
+    fn new(r: u8, g: u8, b: u8) -> Color {
+        Color { red: r, green: g, blue: b }
+    }
+
+    fn black() -> Color {
+        Color {red: 0, green: 0, blue: 0}
+    }
+
+    fn white() -> Color {
+        Color {red: 0xFF, green: 0xFF, blue: 0xFF}
     }
 
     fn bytes(&self) -> Vec<u8> {
@@ -36,7 +81,7 @@ impl Image {
         Image {
             width: width,
             height: height,
-            pixels: Vec::from_elem(width * height, Pixel::new(0, 0, 0))
+            pixels: Vec::from_elem(width * height, Color::new(0, 0, 0))
         }
     }
 
@@ -59,29 +104,30 @@ fn main() {
 }
 
 fn raytrace() -> Image {
-    let width = 300;
-    let height = 300;
+    let width = 900;
+    let height = 900;
     let mut img = Image::new(width, height);
     let scene = setup_scene();
 
     for x in range(0, width) {
         for y in range(0, height) {
             let ray = pixel_to_ray(x, y, width, height);
-            if scene.hit(&ray).is_some() {
-                img.pixels[x + y * width] = Pixel{red:0xFF, green: 0xFF, blue: 0xFF}
-            }
+            let pixel = ray_to_color(&ray, &scene);
+            img.pixels[x + y * width] = pixel;
         }
     }
 
     img
 }
 
+#[deriving(Show, Clone)]
 struct Point {
     x: f32,
     y: f32,
     z: f32
 }
 
+#[deriving(Show, Clone)]
 struct Vector {
     dx: f32,
     dy: f32,
@@ -99,6 +145,15 @@ impl Vector {
         Float::sqrt(self.dx * self.dx + self.dy * self.dy + self.dz * self.dz)
     }
 
+    fn normalized(&self) -> Vector {
+        let length = self.length();
+        Vector {
+            dx: self.dx / length,
+            dy: self.dy / length,
+            dz: self.dz / length
+        }
+    }
+
     fn dot(&self, other: &Vector) -> f32 {
         self.dx * other.dx + self.dy * other.dy + self.dz * other.dz
     }
@@ -108,6 +163,26 @@ impl Vector {
             dx: self.dx * scalar,
             dy: self.dy * scalar,
             dz: self.dz * scalar
+        }
+    }
+}
+
+impl Add<Vector, Vector> for Vector {
+    fn add(&self, other: &Vector) -> Vector {
+        Vector {
+            dx: self.dx + other.dx,
+            dy: self.dy + other.dy,
+            dz: self.dz + other.dz
+        }
+    }
+}
+
+impl Sub<Vector, Vector> for Vector {
+    fn sub(&self, other: &Vector) -> Vector {
+        Vector {
+            dx: self.dx - other.dx,
+            dy: self.dy - other.dy,
+            dz: self.dz - other.dz
         }
     }
 }
@@ -156,69 +231,224 @@ struct Ray {
     direction: Vector
 }
 
-enum SceneObject {
+struct SceneObject {
+    shape: Shape,
+    properties: MaterialProperties
+}
+
+enum Shape {
     Sphere {
         center: Point,
         radius: f32
+    },
+    Plane {
+        point: Point,
+        normal: Vector
     }
 }
+
+struct MaterialProperties {
+    color: Color,
+    specular: f32,
+    diffuse: f32,
+    ambient: f32,
+    shininess: f32
+}
+
+// TODO: consider other values of epsilon
+static EPSILON: f32 = 0.0000001;
 
 impl SceneObject {
     fn hit(&self, &Ray{origin: ref o, direction: ref d}: &Ray) -> Option<Point> {
         // TODO: don't treat the ray like a line
         // TODO: optimize
-        match self {
-            &SceneObject::Sphere {center: ref c, radius: ref r} => {
-                let offset = *o - *c;
+        match self.shape {
+            Shape::Sphere {ref center, ref radius} => {
+                // http://en.wikipedia.org/wiki/Line%E2%80%93sphere_intersection
+                let offset = *o - *center;
                 let initial = -d.dot(&offset);
-                let under_radical = d.dot(&offset).powi(2) - offset.length().powi(2) + r.powi(2);
-                if under_radical < 0.0 {
+                let discriminant = d.dot(&offset).powi(2) - offset.length().powi(2) + radius.powi(2);
+                if discriminant < 0.0 {
                     None
-                } else if under_radical == 0.0 {
+                } else if discriminant == 0.0 {
                     Some(*o + d.times(initial))
                 } else {
-                    Some(*o + d.times(FloatMath::min(initial + under_radical, initial - under_radical)))
+                    Some(*o + d.times(FloatMath::min(initial + discriminant, initial - discriminant)))
+                }
+            },
+            Shape::Plane {ref point, ref normal} => {
+                // http://en.wikipedia.org/wiki/Line%E2%80%93plane_intersection
+                let offset = (*point - *o).dot(normal);
+                let divergence = d.dot(normal);
+                if divergence.abs() < EPSILON {
+                    // line is parallel to plane
+                    if offset.abs() < EPSILON {
+                        // ray intersects plane everywhere, so we return the start of the ray
+                        Some(o.clone())
+                    } else {
+                        // ray does not intersect plane
+                        None
+                    }
+                } else {
+                    let distance = offset / divergence;
+                    if distance <= 0.0 {
+                        // intersection point is before the start of the ray
+                        None
+                    } else {
+                        // intersects plane at one point
+                        Some(*o + d.times(distance))
+                    }
                 }
             }
+        }
+    }
+
+    fn normal_at(&self, point: &Point) -> Vector {
+        match self.shape {
+            Shape::Sphere {ref center, ..} => {
+                (*point - *center).normalized()
+            },
+            Shape::Plane {ref normal, ..} => normal.clone()
         }
     }
 }
 
 struct Scene {
-    objects: Vec<SceneObject>
+    objects: Vec<SceneObject>,
+    lights: Vec<Light>
 }
 
 impl Scene {
     fn hit(&self, ray: &Ray) -> Option<(Point, &SceneObject)> {
         self.objects.iter()
-            .filter_map(|obj| obj.hit(ray).map(|p| (p,obj)))
+            .filter_map(|obj| obj.hit(ray).map(|p| (p,obj)))//.inspect(|&(ref p,_)| println!("{}", p))
             .min_by(|&(ref p,_)| OrderedF32(p.distance(&ray.origin)))
     }
 }
 
-// TODO: don't use this stupid projection
-fn pixel_to_ray(x: uint, y: uint, width: uint, height: uint) -> Ray {
-    Ray {
-        origin: Point {
-            x: x as f32 / width as f32 * 2.0 - 1.0,
-            y: y as f32 / height as f32 * 2.0 - 1.0,
-            z: -1.0
-        },
-        direction: Vector {
-            dx: 0.0,
-            dy: 0.0,
-            dz: 1.0
+enum Light {
+    // Point {
+    //     point: Point,
+    //     intensity: f32
+    // },
+    Direction {
+        direction: Vector,
+        intensity: f32
+    }
+}
+
+impl Light {
+    fn vector_for(&self, point: &Point) -> Vector {
+        match self {
+            &Light::Direction {ref direction, ..} => direction.normalized().times(-1.0)
         }
+    }
+
+    fn intensity_for(&self, point: &Point) -> f32 {
+        match self {
+            &Light::Direction {intensity, ..} => intensity
+        }
+    }
+}
+
+// TODO: fix up the projection
+fn pixel_to_ray(x: uint, y: uint, width: uint, height: uint) -> Ray {
+    let camera = Point {
+        x: 0.0,
+        y: 0.0,
+        z: -4.0
+    };
+    Ray {
+        direction: (Point {
+            x: x as f32 / width as f32 * 2.0 - 1.0,
+            y: (height - y) as f32 / height as f32 * 2.0 - 1.0,
+            z: -3.0
+        } - camera).normalized(),
+        origin: camera
     }
 }
 
 fn setup_scene() -> Scene {
     Scene {
         objects: vec![
-            SceneObject::Sphere{
-                center: Point {x:0.0, y:0.0, z:0.0},
-                radius: 0.1
+            SceneObject {
+                shape: Shape::Sphere {
+                    center: Point {x:0.0, y:0.0, z:0.0},
+                    radius: 1.0
+                },
+                properties: MaterialProperties {
+                    color: Color {
+                        red: 0xFF,
+                        green: 0x00,
+                        blue: 0x00
+                    },
+                    specular: 1.0,
+                    diffuse: 0.8,
+                    ambient: 0.2,
+                    shininess: 3.0
+                }
+            },
+            SceneObject {
+                shape: Shape::Plane {
+                    point: Point {x:0.0, y:-2.0, z:0.0},
+                    normal: Vector {dx: 0.0, dy: 1.0, dz:0.0}
+                },
+                properties: MaterialProperties {
+                    color: Color {
+                        red: 0x00,
+                        green: 0x00,
+                        blue: 0xFF
+                    },
+                    specular: 0.0,
+                    diffuse: 1.0,
+                    ambient: 0.2,
+                    shininess: 3.0
+                }
             }
+        ],
+        lights: vec![
+            Light::Direction {
+                direction: Vector {
+                    dx: 0.0,
+                    dy: -1.0,
+                    dz: 0.0
+                },
+                intensity: 1.0
+            },
+            // Light::Direction {
+            //     direction: Vector {
+            //         dx: -0.5,
+            //         dy: -0.5,
+            //         dz: -1.0
+            //     },
+            //     intensity: 1.0
+            // }
         ]
+    }
+}
+
+fn ray_to_color(ray: &Ray, scene: &Scene) -> Color {
+    fn light_contribution(light: &Light, point: &Point, obj: &SceneObject, ray: &Ray) -> Color {
+        // http://en.wikipedia.org/wiki/Lambertian_reflectance
+        let norm_v = obj.normal_at(point);
+        let light_v = &light.vector_for(point);
+        let diffuse_intensity = obj.properties.diffuse * FloatMath::max(0.0, norm_v.dot(light_v));
+        // http://en.wikipedia.org/wiki/Phong_reflection_model
+        let light_reflection_v = norm_v.times(2.0 * norm_v.dot(light_v)) - *light_v;
+        let specular_intensity = obj.properties.specular
+            * FloatMath::max(0.0, -light_reflection_v.dot(&ray.direction.normalized())).powf(obj.properties.shininess);
+        let diffuse_color = obj.properties.color * diffuse_intensity;
+        let specular_color = (Color::white() - diffuse_color) * specular_intensity;
+        (diffuse_color + specular_color) * light.intensity_for(point)
+    }
+
+    match scene.hit(ray) {
+        Some((point, obj)) => {
+            let ambient = obj.properties.color * obj.properties.ambient;
+            ambient + scene.lights.iter()
+                .map(|l| light_contribution(l, &point, obj, ray))
+                .fold(Color::black(), |a, b| a + b)
+        },
+        None => Color::black()
     }
 }
