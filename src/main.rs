@@ -5,6 +5,7 @@ extern crate png;
 
 use std::vec::Vec;
 use std::num::{from_uint, Float, Int, FloatMath};
+use std::f32::consts;
 
 //TODO: consider making multithreaded
 
@@ -102,14 +103,17 @@ impl Image {
 }
 
 fn main() {
-    let path = Path::new("scene.png");
-    let image = raytrace();
-    let mut png = image.to_png_image();
+    let angles = 64u;
+    for i in range(0, angles) {
+        let path = Path::new(format!("scene{:02}.png", i));
+        let image = raytrace(consts::PI * 2.0 * (i as f32 / angles as f32));
+        let mut png = image.to_png_image();
 
-    png::store_png(&mut png, &path).unwrap();
+        png::store_png(&mut png, &path).unwrap();
+    }
 }
 
-fn raytrace() -> Image {
+fn raytrace(orientation: f32) -> Image {
     let width = 900;
     let height = 900;
     let mut img = Image::new(width, height);
@@ -117,7 +121,7 @@ fn raytrace() -> Image {
 
     for x in range(0, width) {
         for y in range(0, height) {
-            let ray = pixel_to_ray(x, y, width, height);
+            let ray = pixel_to_ray(x, y, width, height, orientation);
             let pixel = ray_to_color(&ray, &scene);
             img.pixels[x + y * width] = pixel;
         }
@@ -241,6 +245,7 @@ struct SceneObject {
     shape: Shape,
     properties: MaterialProperties
 }
+
 
 enum Shape {
     Sphere {
@@ -373,17 +378,17 @@ impl Light {
 }
 
 // TODO: fix up the projection
-fn pixel_to_ray(x: uint, y: uint, width: uint, height: uint) -> Ray {
+fn pixel_to_ray(x: uint, y: uint, width: uint, height: uint, orientation: f32) -> Ray {
     let camera = Point {
-        x: 0.0,
+        x: 4.0 * orientation.sin(),
         y: 0.0,
-        z: -4.0
+        z: -4.0 * orientation.cos()
     };
     Ray {
         direction: (Point {
-            x: x as f32 / width as f32 * 2.0 - 1.0,
+            x: (x as f32 / width as f32 * 2.0 - 1.0) * orientation.cos() + 3.0 * orientation.sin(),
             y: (height - y) as f32 / height as f32 * 2.0 - 1.0,
-            z: -3.0
+            z: (x as f32 / width as f32 * 2.0 - 1.0) * orientation.sin() - 3.0 * orientation.cos()
         } - camera).normalized(),
         origin: camera
     }
@@ -406,7 +411,7 @@ fn setup_scene() -> Scene {
                     specular: 1.0,
                     diffuse: 0.8,
                     ambient: 0.2,
-                    shininess: 3.0
+                    shininess: 9.0
                 }
             },
             SceneObject {
@@ -428,30 +433,30 @@ fn setup_scene() -> Scene {
             }
         ],
         lights: vec![
-            // Light::Direction {
-            //     direction: Vector {
-            //         dx: -2.0,
-            //         dy: -1.0,
-            //         dz: 0.0
-            //     },
-            //     intensity: 0.2
-            // },
-            // Light::Direction {
-            //     direction: Vector {
-            //         dx: 1.5,
-            //         dy: -3.0,
-            //         dz: 1.0
-            //     },
-            //     intensity: 0.8
-            // }
             Light::Direction {
                 direction: Vector {
-                    dx: 0.0,
-                    dy: 0.0,
+                    dx: -2.0,
+                    dy: -1.0,
+                    dz: 0.0
+                },
+                intensity: 0.2
+            },
+            Light::Direction {
+                direction: Vector {
+                    dx: 1.5,
+                    dy: -3.0,
                     dz: 1.0
                 },
                 intensity: 0.8
             }
+            // Light::Direction {
+            //     direction: Vector {
+            //         dx: 0.0,
+            //         dy: 0.0,
+            //         dz: 1.0
+            //     },
+            //     intensity: 0.8
+            // }
         ]
     }
 }
