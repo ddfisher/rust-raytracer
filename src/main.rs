@@ -346,8 +346,9 @@ impl Scene {
             .min_by(|&(ref p,_)| OrderedF32(p.distance(&ray.origin)))
     }
 
-    fn hit_any(&self, ray: &Ray) -> bool {
+    fn hit_any(&self, ray: &Ray, ignore_obj: &SceneObject) -> bool {
         self.objects.iter()
+            .filter(|&obj| (obj as *const SceneObject) != (ignore_obj as *const SceneObject)) // pointer equality
             .any(|obj| obj.hit(ray).is_some())
     }
 }
@@ -411,7 +412,7 @@ fn setup_scene() -> Scene {
                     specular: 1.0,
                     diffuse: 0.8,
                     ambient: 0.2,
-                    shininess: 9.0
+                    shininess: 13.0
                 }
             },
             SceneObject {
@@ -467,10 +468,10 @@ fn ray_to_color(ray: &Ray, scene: &Scene) -> Color {
         let norm_v = obj.normal_at(point);
         let light_v = &light.vector_for(point);
         let diffuse_intensity = obj.properties.diffuse * FloatMath::max(0.0, norm_v.dot(light_v));
-        // http://en.wikipedia.org/wiki/Phong_reflection_model
-        let light_reflection_v = norm_v.times(2.0 * norm_v.dot(light_v)) - *light_v;
+        // http://en.wikipedia.org/wiki/Blinn%E2%80%93Phong_shading_model
+        let half_way_v = (ray.direction.times(-1.0) + *light_v).normalized();
         let specular_intensity = obj.properties.specular
-            * FloatMath::max(0.0, -light_reflection_v.dot(&ray.direction.normalized())).powf(obj.properties.shininess);
+            * FloatMath::max(0.0, norm_v.dot(&half_way_v)).powf(obj.properties.shininess);
         let diffuse_color = obj.properties.color * diffuse_intensity;
         let specular_color = (Color::white() - diffuse_color) * specular_intensity;
         (diffuse_color + specular_color) * light.intensity_for(point)
@@ -483,7 +484,7 @@ fn ray_to_color(ray: &Ray, scene: &Scene) -> Color {
             ambient + scene.lights.iter()
                 .filter(|l| {
                     let purturbed_point = point + obj.normal_at(&point).times(SELF_INTERSECT_OFFSET);
-                    !scene.hit_any(&Ray {direction: l.vector_for(&purturbed_point), origin: purturbed_point})
+                    !scene.hit_any(&Ray {direction: l.vector_for(&purturbed_point), origin: purturbed_point}, obj)
                 })
                 .map(|l| light_contribution(l, &point, obj, ray))
                 .fold(Color::black(), |a, b| a + b)
