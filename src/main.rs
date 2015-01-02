@@ -7,7 +7,15 @@ use std::vec::Vec;
 use std::num::{from_uint, Float, Int, FloatMath};
 use std::f32::consts;
 
-//TODO: consider making multithreaded
+// TODO: support triangles
+// TODO: parse/import .obj files
+// TODO: support .mtl files
+// TODO: speed up ray intersection with KD trees or similar
+// TODO: antialiasing: http://en.wikipedia.org/wiki/Supersampling
+// TODO: consider making multithreaded
+// TODO: make GUI where you can move camera around
+// TODO: refactor?
+
 
 // TODO: consider using a more fine grained Color for computation
 #[deriving(Show, Clone)]
@@ -104,7 +112,8 @@ impl Image {
 
 fn main() {
     let angles = 64u;
-    for i in range(0, angles) {
+    for i in range(0u, angles) {
+    // for i in range(0u, 1) { // XXX
         let path = Path::new(format!("scene{:02}.png", i));
         let image = raytrace(consts::PI * 2.0 * (i as f32 / angles as f32));
         let mut png = image.to_png_image();
@@ -122,7 +131,7 @@ fn raytrace(orientation: f32) -> Image {
     for x in range(0, width) {
         for y in range(0, height) {
             let ray = pixel_to_ray(x, y, width, height, orientation);
-            let pixel = ray_to_color(&ray, &scene);
+            let pixel = ray_to_color(&ray, &scene, 0);
             img.pixels[x + y * width] = pixel;
         }
     }
@@ -259,20 +268,22 @@ enum Shape {
 }
 
 struct MaterialProperties {
-    color: Color,
+    color_primary: Color,
+    color_secondary: Color,
     specular: f32,
     diffuse: f32,
     ambient: f32,
-    shininess: f32
+    shininess: f32,
+    reflectivity: f32
 }
 
 // TODO: consider other values of epsilon
 static EPSILON: f32 = 0.0000001;
 static SELF_INTERSECT_OFFSET: f32 = 0.00001;
+static MAX_BOUNCES: u32 = 1;
 
 impl SceneObject {
     fn hit(&self, &Ray{origin: ref o, direction: ref d}: &Ray) -> Option<Point> {
-        // TODO: don't treat the ray like a line
         // TODO: optimize
         match self.shape {
             Shape::Sphere {ref center, ref radius} => {
@@ -332,6 +343,29 @@ impl SceneObject {
             Shape::Plane {ref normal, ..} => normal.clone()
         }
     }
+
+    fn reflection_at(&self, point: &Point, direction: &Vector) -> Vector {
+        let norm_v = self.normal_at(point);
+        *direction - norm_v.times(2.0 * norm_v.dot(direction))
+    }
+
+    // TODO: set color function in object instead?
+    fn color_at(&self, point: &Point) -> &Color {
+        match self.shape {
+            Shape::Sphere {..} => &self.properties.color_primary,
+            Shape::Plane {point: ref plane_point, ..} => {
+                // TODO: make this work for non-horizontal grids
+                let grid_size = 0.5;
+                let x = (point.x < 0.0) ^ (point.x.abs() % (grid_size * 2.0) < grid_size);
+                let y = (point.z < 0.0) ^ (point.z.abs() % (grid_size * 2.0) < grid_size);
+                if x ^ y {
+                    &self.properties.color_primary
+                } else {
+                    &self.properties.color_secondary
+                }
+            }
+        }
+    }
 }
 
 struct Scene {
@@ -381,15 +415,17 @@ impl Light {
 // TODO: fix up the projection
 fn pixel_to_ray(x: uint, y: uint, width: uint, height: uint, orientation: f32) -> Ray {
     let camera = Point {
-        x: 4.0 * orientation.sin(),
-        y: 0.0,
-        z: -4.0 * orientation.cos()
+        x: 7.0 * orientation.sin(),
+        y: 0.5,
+        z: -7.0 * orientation.cos()
     };
+    let fov_spread = 1.0;
     Ray {
-        direction: (Point {
-            x: (x as f32 / width as f32 * 2.0 - 1.0) * orientation.cos() + 3.0 * orientation.sin(),
-            y: (height - y) as f32 / height as f32 * 2.0 - 1.0,
-            z: (x as f32 / width as f32 * 2.0 - 1.0) * orientation.sin() - 3.0 * orientation.cos()
+        direction:
+            (Point {
+            x: (x as f32 / width as f32 * fov_spread - fov_spread / 2.0) * orientation.cos() + 6.0 * orientation.sin(),
+            y: (height - y) as f32 / height as f32 * fov_spread - fov_spread / 2.0 + 0.5,
+            z: (x as f32 / width as f32 * fov_spread - fov_spread / 2.0) * orientation.sin() - 6.0 * orientation.cos()
         } - camera).normalized(),
         origin: camera
     }
@@ -404,15 +440,36 @@ fn setup_scene() -> Scene {
                     radius: 1.0
                 },
                 properties: MaterialProperties {
-                    color: Color {
+                    color_primary: Color {
                         red: 0xFF,
                         green: 0x00,
                         blue: 0x00
                     },
+                    color_secondary: Color::black(),
                     specular: 1.0,
                     diffuse: 0.8,
                     ambient: 0.2,
-                    shininess: 13.0
+                    shininess: 13.0,
+                    reflectivity: 0.5
+                }
+            },
+            SceneObject {
+                shape: Shape::Sphere {
+                    center: Point {x:3.0, y:0.0, z:0.0},
+                    radius: 0.5
+                },
+                properties: MaterialProperties {
+                    color_primary: Color {
+                        red: 0x00,
+                        green: 0xFF,
+                        blue: 0x00
+                    },
+                    color_secondary: Color::black(),
+                    specular: 1.0,
+                    diffuse: 0.8,
+                    ambient: 0.2,
+                    shininess: 13.0,
+                    reflectivity: 0.5
                 }
             },
             SceneObject {
@@ -421,15 +478,17 @@ fn setup_scene() -> Scene {
                     normal: Vector {dx: 0.0, dy: 1.0, dz:0.0}
                 },
                 properties: MaterialProperties {
-                    color: Color {
+                    color_primary: Color {
                         red: 0x50,
                         green: 0x30,
                         blue: 0xA0
                     },
+                    color_secondary: Color::white(),
                     specular: 0.0,
                     diffuse: 1.0,
                     ambient: 0.2,
-                    shininess: 2.0
+                    shininess: 2.0,
+                    reflectivity: 0.0
                 }
             }
         ],
@@ -462,7 +521,7 @@ fn setup_scene() -> Scene {
     }
 }
 
-fn ray_to_color(ray: &Ray, scene: &Scene) -> Color {
+fn ray_to_color(ray: &Ray, scene: &Scene, bounces: u32) -> Color {
     fn light_contribution(light: &Light, point: &Point, obj: &SceneObject, ray: &Ray) -> Color {
         // http://en.wikipedia.org/wiki/Lambertian_reflectance
         let norm_v = obj.normal_at(point);
@@ -472,22 +531,34 @@ fn ray_to_color(ray: &Ray, scene: &Scene) -> Color {
         let half_way_v = (ray.direction.times(-1.0) + *light_v).normalized();
         let specular_intensity = obj.properties.specular
             * FloatMath::max(0.0, norm_v.dot(&half_way_v)).powf(obj.properties.shininess);
-        let diffuse_color = obj.properties.color * diffuse_intensity;
+        let diffuse_color = *obj.color_at(point) * diffuse_intensity;
         let specular_color = (Color::white() - diffuse_color) * specular_intensity;
         (diffuse_color + specular_color) * light.intensity_for(point)
     }
 
+
     // TODO: remove duplicate normal calls
     match scene.hit(ray) {
         Some((point, obj)) => {
-            let ambient = obj.properties.color * obj.properties.ambient;
-            ambient + scene.lights.iter()
+            let ambient = *obj.color_at(&point) * obj.properties.ambient;
+            let local_color = ambient + scene.lights.iter()
                 .filter(|l| {
                     let purturbed_point = point + obj.normal_at(&point).times(SELF_INTERSECT_OFFSET);
                     !scene.hit_any(&Ray {direction: l.vector_for(&purturbed_point), origin: purturbed_point}, obj)
                 })
                 .map(|l| light_contribution(l, &point, obj, ray))
-                .fold(Color::black(), |a, b| a + b)
+                .fold(Color::black(), |a, b| a + b);
+            if bounces >= MAX_BOUNCES {
+                local_color
+            } else {
+                let purturbed_point = point + obj.normal_at(&point).times(SELF_INTERSECT_OFFSET);
+                let reflected_ray = Ray {
+                    origin: purturbed_point,
+                    direction: obj.reflection_at(&point, &ray.direction)
+                };
+                let reflection_color = ray_to_color(&reflected_ray, scene, bounces + 1);
+                reflection_color * obj.properties.reflectivity + local_color// * (1.0 - obj.properties.reflectivity) // XXX
+            }
         },
         None => Color::black()
     }
