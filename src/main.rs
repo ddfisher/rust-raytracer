@@ -278,8 +278,8 @@ struct MaterialProperties {
 }
 
 // TODO: consider other values of epsilon
-static EPSILON: f32 = 0.0000001;
-static SELF_INTERSECT_OFFSET: f32 = 0.00001;
+static EPSILON: f32 = 0.000001;
+static SELF_INTERSECT_OFFSET: f32 = 0.0001;
 static MAX_BOUNCES: u32 = 1;
 
 impl SceneObject {
