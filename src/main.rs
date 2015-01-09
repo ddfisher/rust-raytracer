@@ -177,6 +177,14 @@ impl Vector {
         self.dx * other.dx + self.dy * other.dy + self.dz * other.dz
     }
 
+    fn cross(&self, other: &Vector) -> Vector {
+        Vector {
+            dx: self.dy * other.dz - self.dz * other.dy,
+            dy: self.dz * other.dx - self.dx * other.dz,
+            dz: self.dx * other.dy - self.dy * other.dx
+        }
+    }
+
     fn times(&self, scalar: f32) -> Vector {
         Vector {
             dx: self.dx * scalar,
@@ -264,6 +272,11 @@ enum Shape {
     Plane {
         point: Point,
         normal: Vector
+    },
+    Triangle {
+        p1: Point,
+        p2: Point,
+        p3: Point
     }
 }
 
@@ -283,6 +296,7 @@ static SELF_INTERSECT_OFFSET: f32 = 0.0001;
 static MAX_BOUNCES: u32 = 1;
 
 impl SceneObject {
+    // TODO: consider refactoring to return distance instead of intersection point
     fn hit(&self, &Ray{origin: ref o, direction: ref d}: &Ray) -> Option<Point> {
         // TODO: optimize
         match self.shape {
@@ -331,6 +345,42 @@ impl SceneObject {
                         Some(*o + d.times(distance))
                     }
                 }
+            },
+            Shape::Triangle {ref p1, ref p2, ref p3} => {
+                // http://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
+                // Find vectors for two edges sharing P1
+                let e1 = *p2 - *p1;
+                let e2 = *p3 - *p1;
+                // Begin calculating determinant - also used to calculate u parameter
+                let p = d.cross(&e2);
+                // if determinant is near zero, ray lies in plane of triangle
+                let det = e1.dot(&p);
+                if det.abs() < EPSILON { return None; }
+                let inv_det = 1.0 / det;
+
+                // Calculate distance from P1 to ray origin
+                let p1_dist = *o - *p1;
+
+                // Calculate u parameter and test bound
+                let u = p1_dist.dot(&p) * inv_det;
+                // The intersection lies outside of the triangle
+                if u < 0.0 || u > 1.0 { return None; }
+ 
+                // Prepare to test v parameter
+                let q = p1_dist.cross(&e1);
+                // Calculate V parameter and test bound
+                let v = d.dot(&q) * inv_det;
+                // The intersection lies outside of the triangle
+                if v < 0.0 || u + v  > 1.0 { return None; }
+ 
+                let t = e2.dot(&q) * inv_det;
+ 
+                if t > EPSILON { // ray intersection
+                    return Some(*o + d.times(t));
+                }
+ 
+                // No hit
+                return None;
             }
         }
     }
@@ -340,7 +390,12 @@ impl SceneObject {
             Shape::Sphere {ref center, ..} => {
                 (*point - *center).normalized()
             },
-            Shape::Plane {ref normal, ..} => normal.clone()
+            Shape::Plane {ref normal, ..} => normal.clone(),
+            Shape::Triangle {ref p1, ref p2, ref p3} => {
+                let e1 = *p2 - *p1;
+                let e2 = *p3 - *p1;
+                e1.cross(&e2)
+            }
         }
     }
 
@@ -363,7 +418,8 @@ impl SceneObject {
                 } else {
                     &self.properties.color_secondary
                 }
-            }
+            },
+            Shape::Triangle {..} => &self.properties.color_primary
         }
     }
 }
@@ -434,25 +490,25 @@ fn pixel_to_ray(x: uint, y: uint, width: uint, height: uint, orientation: f32) -
 fn setup_scene() -> Scene {
     Scene {
         objects: vec![
-            SceneObject {
-                shape: Shape::Sphere {
-                    center: Point {x:0.0, y:0.0, z:0.0},
-                    radius: 1.0
-                },
-                properties: MaterialProperties {
-                    color_primary: Color {
-                        red: 0xFF,
-                        green: 0x00,
-                        blue: 0x00
-                    },
-                    color_secondary: Color::black(),
-                    specular: 1.0,
-                    diffuse: 0.8,
-                    ambient: 0.2,
-                    shininess: 13.0,
-                    reflectivity: 0.5
-                }
-            },
+            // SceneObject {
+            //     shape: Shape::Sphere {
+            //         center: Point {x:0.0, y:0.0, z:0.0},
+            //         radius: 1.0
+            //     },
+            //     properties: MaterialProperties {
+            //         color_primary: Color {
+            //             red: 0xFF,
+            //             green: 0x00,
+            //             blue: 0x00
+            //         },
+            //         color_secondary: Color::black(),
+            //         specular: 1.0,
+            //         diffuse: 0.8,
+            //         ambient: 0.2,
+            //         shininess: 13.0,
+            //         reflectivity: 0.5
+            //     }
+            // },
             SceneObject {
                 shape: Shape::Sphere {
                     center: Point {x:3.0, y:0.0, z:0.0},
@@ -490,7 +546,27 @@ fn setup_scene() -> Scene {
                     shininess: 2.0,
                     reflectivity: 0.0
                 }
-            }
+            },
+            SceneObject {
+                shape: Shape::Triangle {
+                    p1: Point {x:0.0, y:0.0, z:0.5},
+                    p2: Point {x:1.0, y:1.0, z:0.0},
+                    p3: Point {x:1.0, y:0.0, z:0.0},
+                },
+                properties: MaterialProperties {
+                    color_primary: Color {
+                        red: 0x00,
+                        green: 0x00,
+                        blue: 0xFF
+                    },
+                    color_secondary: Color::black(),
+                    specular: 1.0,
+                    diffuse: 0.8,
+                    ambient: 0.2,
+                    shininess: 13.0,
+                    reflectivity: 0.0
+                }
+            },
         ],
         lights: vec![
             Light::Direction {
