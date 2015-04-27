@@ -4,8 +4,14 @@
 extern crate png;
 
 use std::vec::Vec;
-use std::num::{from_uint, Float, Int, FloatMath};
+use std::num::{Float, Int};
 use std::f32::consts;
+use std::io::BufferedReader;
+use std::io::File;
+use std::collections::HashMap;
+use std::cmp::Ordering;
+use std::iter;
+use std::ops::{Add, Sub, Mul};
 
 // TODO: support triangles
 // TODO: parse/import .obj files
@@ -18,15 +24,17 @@ use std::f32::consts;
 
 
 // TODO: consider using a more fine grained Color for computation
-#[deriving(Show, Clone)]
+#[derive(Show, Copy, Clone)]
 struct Color {
     red: u8,
     green: u8,
     blue: u8
 }
 
-impl Add<Color, Color> for Color {
-    fn add(&self, other: &Color) -> Color {
+impl Add for Color {
+    type Output = Color;
+
+    fn add(self, other: Color) -> Color {
         Color {
             red:   self.red.saturating_add(other.red),
             green: self.green.saturating_add(other.green),
@@ -35,8 +43,10 @@ impl Add<Color, Color> for Color {
     }
 }
 
-impl Sub<Color, Color> for Color {
-    fn sub(&self, other: &Color) -> Color {
+impl Sub for Color {
+    type Output = Color;
+
+    fn sub(self, other: Color) -> Color {
         Color {
             red:   self.red.saturating_sub(other.red),
             green: self.green.saturating_sub(other.green),
@@ -45,8 +55,10 @@ impl Sub<Color, Color> for Color {
     }
 }
 
-impl Mul<f32, Color> for Color {
-    fn mul(&self, &f: &f32) -> Color {
+impl Mul<f32> for Color {
+    type Output = Color;
+
+    fn mul(self, f: f32) -> Color {
         fn mul_sat(n: u8, f: f32) -> u8 {
             let p = n as f32 * f;
             let max: u8 = Int::max_value();
@@ -62,8 +74,8 @@ impl Mul<f32, Color> for Color {
 }
 
 struct Image {
-    width: uint,
-    height: uint,
+    width: u32,
+    height: u32,
     pixels: Vec<Color>
 }
 
@@ -86,34 +98,34 @@ impl Color {
 }
 
 impl Image {
-    fn new(width: uint, height: uint) -> Image {
+    fn new(width: u32, height: u32) -> Image {
         Image {
             width: width,
             height: height,
-            pixels: Vec::from_elem(width * height, Color::new(0, 0, 0))
+            pixels: iter::repeat(Color::black()).take((width * height) as usize).collect()
         }
     }
 
     // TODO: try to remove some copying?
     fn to_png_image(&self) -> png::Image {
-        let mut pixel_vector: Vec<u8> = Vec::with_capacity(self.width * self.height * 3);
+        let mut pixel_vector: Vec<u8> = Vec::with_capacity((self.width * self.height * 3) as usize);
         for pixel in self.pixels.iter() {
             pixel_vector.push(pixel.red);
             pixel_vector.push(pixel.green);
             pixel_vector.push(pixel.blue);
         }
         png::Image {
-            width: from_uint(self.width).expect("width number out of range for u32"),
-            height: from_uint(self.height).expect("height number out of range for u32"),
+            width: self.width,
+            height: self.height,
             pixels: png::PixelsByColorType::RGB8(pixel_vector)
         }
     }
 }
 
 fn main() {
-    let angles = 64u;
-    for i in range(0u, angles) {
-    // for i in range(0u, 1) { // XXX
+    let angles = 64u32;
+    // for i in (0u32..angles) {
+    for i in (0u32..1) { // XXX
         let path = Path::new(format!("scene{:02}.png", i));
         let image = raytrace(consts::PI * 2.0 * (i as f32 / angles as f32));
         let mut png = image.to_png_image();
@@ -123,7 +135,7 @@ fn main() {
 }
 
 fn raytrace(orientation: f32) -> Image {
-    let width = 900;
+    let width = 900; // XXX
     let height = 900;
     let mut img = Image::new(width, height);
     let scene = setup_scene();
@@ -132,21 +144,21 @@ fn raytrace(orientation: f32) -> Image {
         for y in range(0, height) {
             let ray = pixel_to_ray(x, y, width, height, orientation);
             let pixel = ray_to_color(&ray, &scene, 0);
-            img.pixels[x + y * width] = pixel;
+            img.pixels[(x + y * width) as usize] = pixel;
         }
     }
 
     img
 }
 
-#[deriving(Show, Clone)]
+#[derive(Show, Clone, Copy)]
 struct Point {
     x: f32,
     y: f32,
     z: f32
 }
 
-#[deriving(Show, Clone)]
+#[derive(Show, Clone, Copy)]
 struct Vector {
     dx: f32,
     dy: f32,
@@ -154,8 +166,8 @@ struct Vector {
 }
 
 impl Point {
-    fn distance(&self, other: &Point) -> f32 {
-        (*self - *other).length()
+    fn distance(self, other: Point) -> f32 {
+        (self - other).length()
     }
 }
 
@@ -194,8 +206,10 @@ impl Vector {
     }
 }
 
-impl Add<Vector, Vector> for Vector {
-    fn add(&self, other: &Vector) -> Vector {
+impl Add for Vector {
+    type Output = Vector;
+
+    fn add(self, other: Vector) -> Vector {
         Vector {
             dx: self.dx + other.dx,
             dy: self.dy + other.dy,
@@ -204,8 +218,10 @@ impl Add<Vector, Vector> for Vector {
     }
 }
 
-impl Sub<Vector, Vector> for Vector {
-    fn sub(&self, other: &Vector) -> Vector {
+impl Sub for Vector {
+    type Output = Vector;
+
+    fn sub(self, other: Vector) -> Vector {
         Vector {
             dx: self.dx - other.dx,
             dy: self.dy - other.dy,
@@ -214,8 +230,10 @@ impl Sub<Vector, Vector> for Vector {
     }
 }
 
-impl Add<Vector, Point> for Point {
-    fn add(&self, rel: &Vector) -> Point {
+impl Add<Vector> for Point {
+    type Output = Point;
+
+    fn add(self, rel: Vector) -> Point {
         Point {
             x: self.x + rel.dx,
             y: self.y + rel.dy,
@@ -224,8 +242,10 @@ impl Add<Vector, Point> for Point {
     }
 }
 
-impl Sub<Point, Vector> for Point {
-    fn sub(&self, other: &Point) -> Vector {
+impl Sub<Point> for Point {
+    type Output = Vector;
+
+    fn sub(self, other: Point) -> Vector {
         Vector {
             dx: self.x - other.x,
             dy: self.y - other.y,
@@ -235,7 +255,7 @@ impl Sub<Point, Vector> for Point {
 }
 
 
-#[deriving(PartialEq, PartialOrd)]
+#[derive(PartialEq, PartialOrd)]
 struct OrderedF32(f32);
 
 impl Eq for OrderedF32{} // because I'm a bad person
@@ -244,10 +264,10 @@ impl Ord for OrderedF32 {
     fn cmp(&self, &OrderedF32(other): &OrderedF32) -> Ordering {
         let &OrderedF32(s) = self;
         match (s.is_nan(), other.is_nan()) {
-            (true, true)   => Equal,
-            (true, false)  => Less,
-            (false, true)  => Greater,
-            (false, false) => if s == other { Equal } else if s < other { Less } else { Greater }
+            (true, true)   => Ordering::Equal,
+            (true, false)  => Ordering::Less,
+            (false, true)  => Ordering::Greater,
+            (false, false) => if s == other { Ordering::Equal } else if s < other { Ordering::Less } else { Ordering::Greater }
         }
     }
 }
@@ -365,20 +385,20 @@ impl SceneObject {
                 let u = p1_dist.dot(&p) * inv_det;
                 // The intersection lies outside of the triangle
                 if u < 0.0 || u > 1.0 { return None; }
- 
+
                 // Prepare to test v parameter
                 let q = p1_dist.cross(&e1);
                 // Calculate V parameter and test bound
                 let v = d.dot(&q) * inv_det;
                 // The intersection lies outside of the triangle
                 if v < 0.0 || u + v  > 1.0 { return None; }
- 
+
                 let t = e2.dot(&q) * inv_det;
- 
+
                 if t > EPSILON { // ray intersection
                     return Some(*o + d.times(t));
                 }
- 
+
                 // No hit
                 return None;
             }
@@ -433,7 +453,7 @@ impl Scene {
     fn hit(&self, ray: &Ray) -> Option<(Point, &SceneObject)> {
         self.objects.iter()
             .filter_map(|obj| obj.hit(ray).map(|p| (p,obj)))
-            .min_by(|&(ref p,_)| OrderedF32(p.distance(&ray.origin)))
+            .min_by(|&(ref p,_)| OrderedF32(p.distance(ray.origin)))
     }
 
     fn hit_any(&self, ray: &Ray, ignore_obj: &SceneObject) -> bool {
@@ -469,7 +489,7 @@ impl Light {
 }
 
 // TODO: fix up the projection
-fn pixel_to_ray(x: uint, y: uint, width: uint, height: uint, orientation: f32) -> Ray {
+fn pixel_to_ray(x: u32, y: u32, width: u32, height: u32, orientation: f32) -> Ray {
     let camera = Point {
         x: 7.0 * orientation.sin(),
         y: 0.5,
@@ -488,8 +508,9 @@ fn pixel_to_ray(x: uint, y: uint, width: uint, height: uint, orientation: f32) -
 }
 
 fn setup_scene() -> Scene {
-    Scene {
-        objects: vec![
+    // let teapot = parse_simple_obj_file("scene/teapot.obj");
+    let teapot = parse_simple_obj_file("scene/dodecahedron.obj");
+    let mut objs = vec![
             // SceneObject {
             //     shape: Shape::Sphere {
             //         center: Point {x:0.0, y:0.0, z:0.0},
@@ -547,27 +568,30 @@ fn setup_scene() -> Scene {
                     reflectivity: 0.0
                 }
             },
-            SceneObject {
-                shape: Shape::Triangle {
-                    p1: Point {x:0.0, y:0.0, z:0.5},
-                    p2: Point {x:1.0, y:1.0, z:0.0},
-                    p3: Point {x:1.0, y:0.0, z:0.0},
-                },
-                properties: MaterialProperties {
-                    color_primary: Color {
-                        red: 0x00,
-                        green: 0x00,
-                        blue: 0xFF
-                    },
-                    color_secondary: Color::black(),
-                    specular: 1.0,
-                    diffuse: 0.8,
-                    ambient: 0.2,
-                    shininess: 13.0,
-                    reflectivity: 0.0
-                }
-            },
-        ],
+            // SceneObject {
+            //     shape: Shape::Triangle {
+            //         p1: Point {x:0.0, y:0.0, z:0.5},
+            //         p2: Point {x:1.0, y:1.0, z:0.0},
+            //         p3: Point {x:1.0, y:0.0, z:0.0},
+            //     },
+            //     properties: MaterialProperties {
+            //         color_primary: Color {
+            //             red: 0x00,
+            //             green: 0x00,
+            //             blue: 0xFF
+            //         },
+            //         color_secondary: Color::black(),
+            //         specular: 1.0,
+            //         diffuse: 0.8,
+            //         ambient: 0.2,
+            //         shininess: 13.0,
+            //         reflectivity: 0.0
+            //     }
+            // },
+        ];
+    objs.extend(teapot.into_iter());
+    Scene {
+        objects: objs,
         lights: vec![
             Light::Direction {
                 direction: Vector {
@@ -602,11 +626,11 @@ fn ray_to_color(ray: &Ray, scene: &Scene, bounces: u32) -> Color {
         // http://en.wikipedia.org/wiki/Lambertian_reflectance
         let norm_v = obj.normal_at(point);
         let light_v = &light.vector_for(point);
-        let diffuse_intensity = obj.properties.diffuse * FloatMath::max(0.0, norm_v.dot(light_v));
+        let diffuse_intensity = obj.properties.diffuse * Float::max(0.0, norm_v.dot(light_v));
         // http://en.wikipedia.org/wiki/Blinn%E2%80%93Phong_shading_model
         let half_way_v = (ray.direction.times(-1.0) + *light_v).normalized();
         let specular_intensity = obj.properties.specular
-            * FloatMath::max(0.0, norm_v.dot(&half_way_v)).powf(obj.properties.shininess);
+            * Float::max(0.0, norm_v.dot(&half_way_v)).powf(obj.properties.shininess);
         let diffuse_color = *obj.color_at(point) * diffuse_intensity;
         let specular_color = (Color::white() - diffuse_color) * specular_intensity;
         (diffuse_color + specular_color) * light.intensity_for(point)
@@ -638,4 +662,55 @@ fn ray_to_color(ray: &Ray, scene: &Scene, bounces: u32) -> Color {
         },
         None => Color::black()
     }
+}
+
+fn parse_simple_obj_file(filename: &str) -> Vec<SceneObject> {
+    let path = Path::new(filename);
+    let mut file = BufferedReader::new(File::open(&path));
+
+    let mut vertex_counter = 1u32;
+    let mut vertices = HashMap::new();
+    let mut objs = Vec::new();
+    for line in file.lines() {
+        let l = line.unwrap();
+        if l.starts_with("v ") {
+            let coords: Vec<f32> = l.words().skip(1).filter_map(StrExt::parse).collect();
+            assert!(coords.len() == 3);
+            vertices.insert(vertex_counter, Point {
+                x: coords[0],
+                y: coords[1],
+                z: coords[2]
+            });
+            vertex_counter += 1;
+        } else if l.starts_with("f ") {
+            let points: Vec<&Point> = l.words().skip(1).map(|w| chop(w, '/')).filter_map(StrExt::parse::<u32>).filter_map(|p| vertices.get(&p)).collect();
+            assert!(points.len() == 3);
+            objs.push(SceneObject {
+                shape: Shape::Triangle {
+                    p1: points[0].clone(),
+                    p2: points[1].clone(),
+                    p3: points[2].clone()
+                },
+                properties: MaterialProperties {
+                    color_primary: Color {
+                        red: 0xFF,
+                        green: 0x00,
+                        blue: 0x00
+                    },
+                    color_secondary: Color::black(),
+                    specular: 1.0,
+                    diffuse: 0.8,
+                    ambient: 0.2,
+                    shininess: 13.0,
+                    reflectivity: 0.5
+                }
+            });
+        }
+    }
+    println!("File parsed."); // XXX
+    objs
+}
+
+fn chop(s: &str, c: char) -> &str {
+    s.splitn(1, c).next().unwrap()
 }
