@@ -1,13 +1,13 @@
 // TODO: remove once stable
 #![allow(dead_code)]
 
-extern crate png;
+extern crate image;
 
 use std::vec::Vec;
-use std::num::{Float, Int};
 use std::f32::consts;
-use std::io::BufferedReader;
-use std::io::File;
+use std::io::{BufRead, BufReader};
+use std::fs::File;
+use std::path::Path;
 use std::collections::HashMap;
 use std::cmp::Ordering;
 use std::iter;
@@ -24,7 +24,7 @@ use std::ops::{Add, Sub, Mul};
 
 
 // TODO: consider using a more fine grained Color for computation
-#[derive(Show, Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 struct Color {
     red: u8,
     green: u8,
@@ -61,8 +61,8 @@ impl Mul<f32> for Color {
     fn mul(self, f: f32) -> Color {
         fn mul_sat(n: u8, f: f32) -> u8 {
             let p = n as f32 * f;
-            let max: u8 = Int::max_value();
-            if p >= (max + 1) as f32 { p as u8 } else { 0xFF }
+            let max: u8 = u8::max_value();
+            if p < (max as f32) { p as u8 } else { 0xFF }
         }
 
         Color {
@@ -107,30 +107,28 @@ impl Image {
     }
 
     // TODO: try to remove some copying?
-    fn to_png_image(&self) -> png::Image {
+    fn to_pixels(&self) -> Vec<u8> {
         let mut pixel_vector: Vec<u8> = Vec::with_capacity((self.width * self.height * 3) as usize);
         for pixel in self.pixels.iter() {
             pixel_vector.push(pixel.red);
             pixel_vector.push(pixel.green);
             pixel_vector.push(pixel.blue);
         }
-        png::Image {
-            width: self.width,
-            height: self.height,
-            pixels: png::PixelsByColorType::RGB8(pixel_vector)
-        }
+        pixel_vector
     }
 }
 
 fn main() {
     let angles = 64u32;
     // for i in (0u32..angles) {
-    for i in (0u32..1) { // XXX
-        let path = Path::new(format!("scene{:02}.png", i));
+    for i in 0u32..1 { // XXX
+        let pathname = format!("scene{:02}.png", i);
+        let path = Path::new(&pathname);
         let image = raytrace(consts::PI * 2.0 * (i as f32 / angles as f32));
-        let mut png = image.to_png_image();
+        // let mut png = image.to_png_image();
 
-        png::store_png(&mut png, &path).unwrap();
+        // png::store_png(&mut png, &path).unwrap();
+        image::save_buffer(&path, &image.to_pixels()[..], image.width, image.height, image::RGB(8)).unwrap()
     }
 }
 
@@ -140,8 +138,8 @@ fn raytrace(orientation: f32) -> Image {
     let mut img = Image::new(width, height);
     let scene = setup_scene();
 
-    for x in range(0, width) {
-        for y in range(0, height) {
+    for x in 0..width {
+        for y in 0..height {
             let ray = pixel_to_ray(x, y, width, height, orientation);
             let pixel = ray_to_color(&ray, &scene, 0);
             img.pixels[(x + y * width) as usize] = pixel;
@@ -151,14 +149,14 @@ fn raytrace(orientation: f32) -> Image {
     img
 }
 
-#[derive(Show, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 struct Point {
     x: f32,
     y: f32,
     z: f32
 }
 
-#[derive(Show, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 struct Vector {
     dx: f32,
     dy: f32,
@@ -173,7 +171,7 @@ impl Point {
 
 impl Vector {
     fn length(&self) -> f32 {
-        Float::sqrt(self.dx * self.dx + self.dy * self.dy + self.dz * self.dz)
+        f32::sqrt(self.dx * self.dx + self.dy * self.dy + self.dz * self.dz)
     }
 
     fn normalized(&self) -> Vector {
@@ -428,7 +426,7 @@ impl SceneObject {
     fn color_at(&self, point: &Point) -> &Color {
         match self.shape {
             Shape::Sphere {..} => &self.properties.color_primary,
-            Shape::Plane {point: ref plane_point, ..} => {
+            Shape::Plane {..} => {
                 // TODO: make this work for non-horizontal grids
                 let grid_size = 0.5;
                 let x = (point.x < 0.0) ^ (point.x.abs() % (grid_size * 2.0) < grid_size);
@@ -453,7 +451,7 @@ impl Scene {
     fn hit(&self, ray: &Ray) -> Option<(Point, &SceneObject)> {
         self.objects.iter()
             .filter_map(|obj| obj.hit(ray).map(|p| (p,obj)))
-            .min_by(|&(ref p,_)| OrderedF32(p.distance(ray.origin)))
+            .min_by_key(|&(ref p,_)| OrderedF32(p.distance(ray.origin)))
     }
 
     fn hit_any(&self, ray: &Ray, ignore_obj: &SceneObject) -> bool {
@@ -475,13 +473,13 @@ enum Light {
 }
 
 impl Light {
-    fn vector_for(&self, point: &Point) -> Vector {
+    fn vector_for(&self, _: &Point) -> Vector {
         match self {
             &Light::Direction {ref direction, ..} => direction.normalized().times(-1.0)
         }
     }
 
-    fn intensity_for(&self, point: &Point) -> f32 {
+    fn intensity_for(&self, _: &Point) -> f32 {
         match self {
             &Light::Direction {intensity, ..} => intensity
         }
@@ -626,11 +624,11 @@ fn ray_to_color(ray: &Ray, scene: &Scene, bounces: u32) -> Color {
         // http://en.wikipedia.org/wiki/Lambertian_reflectance
         let norm_v = obj.normal_at(point);
         let light_v = &light.vector_for(point);
-        let diffuse_intensity = obj.properties.diffuse * Float::max(0.0, norm_v.dot(light_v));
+        let diffuse_intensity = obj.properties.diffuse * f32::max(0.0, norm_v.dot(light_v));
         // http://en.wikipedia.org/wiki/Blinn%E2%80%93Phong_shading_model
         let half_way_v = (ray.direction.times(-1.0) + *light_v).normalized();
         let specular_intensity = obj.properties.specular
-            * Float::max(0.0, norm_v.dot(&half_way_v)).powf(obj.properties.shininess);
+            * f32::max(0.0, norm_v.dot(&half_way_v)).powf(obj.properties.shininess);
         let diffuse_color = *obj.color_at(point) * diffuse_intensity;
         let specular_color = (Color::white() - diffuse_color) * specular_intensity;
         (diffuse_color + specular_color) * light.intensity_for(point)
@@ -666,7 +664,7 @@ fn ray_to_color(ray: &Ray, scene: &Scene, bounces: u32) -> Color {
 
 fn parse_simple_obj_file(filename: &str) -> Vec<SceneObject> {
     let path = Path::new(filename);
-    let mut file = BufferedReader::new(File::open(&path));
+    let file = BufReader::new(File::open(&path).unwrap());
 
     let mut vertex_counter = 1u32;
     let mut vertices = HashMap::new();
@@ -674,7 +672,7 @@ fn parse_simple_obj_file(filename: &str) -> Vec<SceneObject> {
     for line in file.lines() {
         let l = line.unwrap();
         if l.starts_with("v ") {
-            let coords: Vec<f32> = l.words().skip(1).filter_map(StrExt::parse).collect();
+            let coords: Vec<f32> = l.split(' ').skip(1).filter_map(|s| str::parse(s).ok()).collect();
             assert!(coords.len() == 3);
             vertices.insert(vertex_counter, Point {
                 x: coords[0],
@@ -683,7 +681,7 @@ fn parse_simple_obj_file(filename: &str) -> Vec<SceneObject> {
             });
             vertex_counter += 1;
         } else if l.starts_with("f ") {
-            let points: Vec<&Point> = l.words().skip(1).map(|w| chop(w, '/')).filter_map(StrExt::parse::<u32>).filter_map(|p| vertices.get(&p)).collect();
+            let points: Vec<&Point> = l.split(' ').skip(1).map(|w| chop(w, '/')).filter_map(|s| str::parse::<u32>(s).ok()).filter_map(|p| vertices.get(&p)).collect();
             assert!(points.len() == 3);
             objs.push(SceneObject {
                 shape: Shape::Triangle {
