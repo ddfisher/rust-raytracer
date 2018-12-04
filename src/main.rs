@@ -13,15 +13,42 @@ use std::cmp::Ordering;
 use std::iter;
 use std::ops::{Add, Sub, Mul};
 
-// TODO: support triangles
-// TODO: parse/import .obj files
+// TODO: fully support .obj files
 // TODO: support .mtl files
 // TODO: speed up ray intersection with KD trees or similar
-// TODO: antialiasing: http://en.wikipedia.org/wiki/Supersampling
+// TODO: add antialiasing: http://en.wikipedia.org/wiki/Supersampling
 // TODO: consider making multithreaded
 // TODO: make GUI where you can move camera around
-// TODO: refactor?
 
+fn main() -> Result<(), std::io::Error> {
+    let angles = 64u32;
+    for i in 0u32..angles {
+        let pathname = format!("./output/scene{:02}.png", i);
+        let path = Path::new(&pathname);
+        let image = raytrace(consts::PI * 2.0 * (i as f32 / angles as f32));
+        image::save_buffer(&path, &image.to_pixels()[..], image.width, image.height, image::RGB(8))?;
+        println!("Scene {} complete.", i);
+    }
+
+    Ok(())
+}
+
+fn raytrace(orientation: f32) -> Image {
+    let width = 900; // XXX
+    let height = 900;
+    let mut img = Image::new(width, height);
+    let scene = setup_scene();
+
+    for x in 0..width {
+        for y in 0..height {
+            let ray = pixel_to_ray(x, y, width, height, orientation);
+            let pixel = ray_to_color(&ray, &scene, 0);
+            img.pixels[(x + y * width) as usize] = pixel;
+        }
+    }
+
+    img
+}
 
 // TODO: consider using a more fine grained Color for computation
 #[derive(Debug, Copy, Clone)]
@@ -29,6 +56,24 @@ struct Color {
     red: u8,
     green: u8,
     blue: u8
+}
+
+impl Color {
+    fn new(r: u8, g: u8, b: u8) -> Color {
+        Color { red: r, green: g, blue: b }
+    }
+
+    fn black() -> Color {
+        Color {red: 0, green: 0, blue: 0}
+    }
+
+    fn white() -> Color {
+        Color {red: 0xFF, green: 0xFF, blue: 0xFF}
+    }
+
+    fn bytes(&self) -> Vec<u8> {
+        vec![self.red, self.green, self.blue]
+    }
 }
 
 impl Add for Color {
@@ -79,24 +124,6 @@ struct Image {
     pixels: Vec<Color>
 }
 
-impl Color {
-    fn new(r: u8, g: u8, b: u8) -> Color {
-        Color { red: r, green: g, blue: b }
-    }
-
-    fn black() -> Color {
-        Color {red: 0, green: 0, blue: 0}
-    }
-
-    fn white() -> Color {
-        Color {red: 0xFF, green: 0xFF, blue: 0xFF}
-    }
-
-    fn bytes(&self) -> Vec<u8> {
-        vec![self.red, self.green, self.blue]
-    }
-}
-
 impl Image {
     fn new(width: u32, height: u32) -> Image {
         Image {
@@ -106,7 +133,6 @@ impl Image {
         }
     }
 
-    // TODO: try to remove some copying?
     fn to_pixels(&self) -> Vec<u8> {
         let mut pixel_vector: Vec<u8> = Vec::with_capacity((self.width * self.height * 3) as usize);
         for pixel in self.pixels.iter() {
@@ -118,37 +144,6 @@ impl Image {
     }
 }
 
-fn main() {
-    let angles = 64u32;
-    // for i in (0u32..angles) {
-    for i in 0u32..1 { // XXX
-        let pathname = format!("scene{:02}.png", i);
-        let path = Path::new(&pathname);
-        let image = raytrace(consts::PI * 2.0 * (i as f32 / angles as f32));
-        // let mut png = image.to_png_image();
-
-        // png::store_png(&mut png, &path).unwrap();
-        image::save_buffer(&path, &image.to_pixels()[..], image.width, image.height, image::RGB(8)).unwrap()
-    }
-}
-
-fn raytrace(orientation: f32) -> Image {
-    let width = 900; // XXX
-    let height = 900;
-    let mut img = Image::new(width, height);
-    let scene = setup_scene();
-
-    for x in 0..width {
-        for y in 0..height {
-            let ray = pixel_to_ray(x, y, width, height, orientation);
-            let pixel = ray_to_color(&ray, &scene, 0);
-            img.pixels[(x + y * width) as usize] = pixel;
-        }
-    }
-
-    img
-}
-
 #[derive(Debug, Clone, Copy)]
 struct Point {
     x: f32,
@@ -156,17 +151,29 @@ struct Point {
     z: f32
 }
 
+impl Point {
+    fn distance(self, other: Point) -> f32 {
+        (self - other).length()
+    }
+}
+
+impl Sub<Point> for Point {
+    type Output = Vector;
+
+    fn sub(self, other: Point) -> Vector {
+        Vector {
+            dx: self.x - other.x,
+            dy: self.y - other.y,
+            dz: self.z - other.z
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Vector {
     dx: f32,
     dy: f32,
     dz: f32
-}
-
-impl Point {
-    fn distance(self, other: Point) -> f32 {
-        (self - other).length()
-    }
 }
 
 impl Vector {
@@ -240,23 +247,26 @@ impl Add<Vector> for Point {
     }
 }
 
-impl Sub<Point> for Point {
-    type Output = Vector;
+struct OrderedF32(f32);
 
-    fn sub(self, other: Point) -> Vector {
-        Vector {
-            dx: self.x - other.x,
-            dy: self.y - other.y,
-            dz: self.z - other.z
+impl PartialEq for OrderedF32 {
+    fn eq(&self, &OrderedF32(other): &OrderedF32) -> bool {
+        let &OrderedF32(s) = self;
+        match (s.is_nan(), other.is_nan()) {
+            (true, true)   => true,
+            (false, false) => s == other,
+            (_, _)         => false,
         }
     }
 }
 
+impl Eq for OrderedF32{}
 
-#[derive(PartialEq, PartialOrd)]
-struct OrderedF32(f32);
-
-impl Eq for OrderedF32{} // because I'm a bad person
+impl PartialOrd for OrderedF32 {
+    fn partial_cmp(&self, other: &OrderedF32) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
 impl Ord for OrderedF32 {
     fn cmp(&self, &OrderedF32(other): &OrderedF32) -> Ordering {
@@ -270,7 +280,6 @@ impl Ord for OrderedF32 {
     }
 }
 
-// goes from p0 towards p1
 struct Ray {
     origin: Point,
     direction: Vector
@@ -308,10 +317,10 @@ struct MaterialProperties {
     reflectivity: f32
 }
 
-// TODO: consider other values of epsilon
+// TODO: play with other values of epsilon
 static EPSILON: f32 = 0.000001;
 static SELF_INTERSECT_OFFSET: f32 = 0.0001;
-static MAX_BOUNCES: u32 = 1;
+static MAX_BOUNCES: u32 = 3;
 
 impl SceneObject {
     // TODO: consider refactoring to return distance instead of intersection point
@@ -422,7 +431,7 @@ impl SceneObject {
         *direction - norm_v.times(2.0 * norm_v.dot(direction))
     }
 
-    // TODO: set color function in object instead?
+    // TODO: allow coloring to differ by object
     fn color_at(&self, point: &Point) -> &Color {
         match self.shape {
             Shape::Sphere {..} => &self.properties.color_primary,
@@ -506,28 +515,8 @@ fn pixel_to_ray(x: u32, y: u32, width: u32, height: u32, orientation: f32) -> Ra
 }
 
 fn setup_scene() -> Scene {
-    // let teapot = parse_simple_obj_file("scene/teapot.obj");
-    let teapot = parse_simple_obj_file("scene/dodecahedron.obj");
+    let dodecahedron = parse_simple_obj_file("scene/dodecahedron.obj");
     let mut objs = vec![
-            // SceneObject {
-            //     shape: Shape::Sphere {
-            //         center: Point {x:0.0, y:0.0, z:0.0},
-            //         radius: 1.0
-            //     },
-            //     properties: MaterialProperties {
-            //         color_primary: Color {
-            //             red: 0xFF,
-            //             green: 0x00,
-            //             blue: 0x00
-            //         },
-            //         color_secondary: Color::black(),
-            //         specular: 1.0,
-            //         diffuse: 0.8,
-            //         ambient: 0.2,
-            //         shininess: 13.0,
-            //         reflectivity: 0.5
-            //     }
-            // },
             SceneObject {
                 shape: Shape::Sphere {
                     center: Point {x:3.0, y:0.0, z:0.0},
@@ -566,28 +555,8 @@ fn setup_scene() -> Scene {
                     reflectivity: 0.0
                 }
             },
-            // SceneObject {
-            //     shape: Shape::Triangle {
-            //         p1: Point {x:0.0, y:0.0, z:0.5},
-            //         p2: Point {x:1.0, y:1.0, z:0.0},
-            //         p3: Point {x:1.0, y:0.0, z:0.0},
-            //     },
-            //     properties: MaterialProperties {
-            //         color_primary: Color {
-            //             red: 0x00,
-            //             green: 0x00,
-            //             blue: 0xFF
-            //         },
-            //         color_secondary: Color::black(),
-            //         specular: 1.0,
-            //         diffuse: 0.8,
-            //         ambient: 0.2,
-            //         shininess: 13.0,
-            //         reflectivity: 0.0
-            //     }
-            // },
         ];
-    objs.extend(teapot.into_iter());
+    objs.extend(dodecahedron.into_iter());
     Scene {
         objects: objs,
         lights: vec![
@@ -607,14 +576,6 @@ fn setup_scene() -> Scene {
                 },
                 intensity: 0.8
             }
-            // Light::Direction {
-            //     direction: Vector {
-            //         dx: 0.0,
-            //         dy: 0.0,
-            //         dz: 1.0
-            //     },
-            //     intensity: 0.8
-            // }
         ]
     }
 }
@@ -705,7 +666,6 @@ fn parse_simple_obj_file(filename: &str) -> Vec<SceneObject> {
             });
         }
     }
-    println!("File parsed."); // XXX
     objs
 }
 
