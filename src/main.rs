@@ -412,7 +412,7 @@ impl SceneObject {
             Shape::Triangle {ref p1, ref p2, ref p3} => {
                 let e1 = *p2 - *p1;
                 let e2 = *p3 - *p1;
-                e1.cross(&e2)
+                e1.cross(&e2).normalized()
             }
         }
     }
