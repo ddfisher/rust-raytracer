@@ -34,7 +34,7 @@ fn main() -> Result<(), std::io::Error> {
 }
 
 fn raytrace(orientation: f32) -> Image {
-    let width = 900; // XXX
+    let width = 900;
     let height = 900;
     let mut img = Image::new(width, height);
     let scene = setup_scene();
@@ -547,7 +547,11 @@ fn setup_scene() -> Scene {
                         green: 0x30,
                         blue: 0xA0
                     },
-                    color_secondary: Color::white(),
+                    color_secondary: Color {
+                        red: 0x50,
+                        green: 0x30,
+                        blue: 0xA0
+                    },
                     specular: 0.0,
                     diffuse: 1.0,
                     ambient: 0.2,
@@ -562,9 +566,9 @@ fn setup_scene() -> Scene {
         lights: vec![
             Light::Direction {
                 direction: Vector {
-                    dx: -2.0,
+                    dx: 0.0,
                     dy: -1.0,
-                    dz: 0.0
+                    dz: 2.0
                 },
                 intensity: 0.2
             },
