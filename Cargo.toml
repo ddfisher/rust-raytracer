@@ -3,6 +3,7 @@
 name = "raytracer"
 version = "0.0.1"
 authors = ["David Fisher <ddf1991@gmail.com>>"]
+edition = "2018"
 
 [dependencies]
 image = "*"
