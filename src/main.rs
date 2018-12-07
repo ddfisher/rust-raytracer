@@ -71,7 +71,7 @@ impl Color {
         Color {red: 0xFF, green: 0xFF, blue: 0xFF}
     }
 
-    fn bytes(&self) -> Vec<u8> {
+    fn bytes(self) -> Vec<u8> {
         vec![self.red, self.green, self.blue]
     }
 }
@@ -105,9 +105,9 @@ impl Mul<f32> for Color {
 
     fn mul(self, f: f32) -> Color {
         fn mul_sat(n: u8, f: f32) -> u8 {
-            let p = n as f32 * f;
+            let p = f32::from(n) * f;
             let max: u8 = u8::max_value();
-            if p < (max as f32) { p as u8 } else { 0xFF }
+            if p < f32::from(max) { p as u8 } else { 0xFF }
         }
 
         Color {
@@ -127,8 +127,8 @@ struct Image {
 impl Image {
     fn new(width: u32, height: u32) -> Image {
         Image {
-            width: width,
-            height: height,
+            width,
+            height,
             pixels: iter::repeat(Color::black()).take((width * height) as usize).collect()
         }
     }
@@ -318,7 +318,7 @@ struct MaterialProperties {
 }
 
 // TODO: play with other values of epsilon
-static EPSILON: f32 = 0.000001;
+static EPSILON: f32 = 0.000_001;
 static SELF_INTERSECT_OFFSET: f32 = 0.0001;
 static MAX_BOUNCES: u32 = 3;
 
@@ -363,7 +363,7 @@ impl SceneObject {
                     // line is parallel to plane
                     if offset.abs() < EPSILON {
                         // ray intersects plane everywhere, so we return the start of the ray
-                        Some(ray.origin.clone())
+                        Some(ray.origin)
                     } else {
                         // ray does not intersect plane
                         None
@@ -413,7 +413,7 @@ impl SceneObject {
                 }
 
                 // No hit
-                return None;
+                None
             }
         }
     }
@@ -423,7 +423,7 @@ impl SceneObject {
             Shape::Sphere {ref center, ..} => {
                 (*point - *center).normalized()
             },
-            Shape::Plane {ref normal, ..} => normal.clone(),
+            Shape::Plane {ref normal, ..} => *normal,
             Shape::Triangle {ref p1, ref p2, ref p3} => {
                 let e1 = *p2 - *p1;
                 let e2 = *p3 - *p1;
@@ -490,13 +490,13 @@ enum Light {
 impl Light {
     fn vector_for(&self, _: &Point) -> Vector {
         match self {
-            &Light::Direction {ref direction, ..} => direction.normalized().times(-1.0)
+            Light::Direction {ref direction, ..} => direction.normalized().times(-1.0)
         }
     }
 
     fn intensity_for(&self, _: &Point) -> f32 {
         match self {
-            &Light::Direction {intensity, ..} => intensity
+            Light::Direction {intensity, ..} => *intensity
         }
     }
 }
@@ -656,9 +656,9 @@ fn parse_simple_obj_file(filename: &str) -> Vec<SceneObject> {
             assert!(points.len() == 3);
             objs.push(SceneObject {
                 shape: Shape::Triangle {
-                    p1: points[0].clone(),
-                    p2: points[1].clone(),
-                    p3: points[2].clone()
+                    p1: *points[0],
+                    p2: *points[1],
+                    p3: *points[2]
                 },
                 properties: MaterialProperties {
                     color_primary: Color {
