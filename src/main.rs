@@ -324,14 +324,20 @@ static MAX_BOUNCES: u32 = 3;
 
 impl SceneObject {
     // TODO: consider refactoring to return distance instead of intersection point
-    fn hit(&self, &Ray{origin: ref o, direction: ref d}: &Ray) -> Option<Point> {
+    fn hit(&self, ray: &Ray) -> Option<Point> {
         // TODO: optimize
         match self.shape {
             Shape::Sphere {ref center, ref radius} => {
-                // http://en.wikipedia.org/wiki/Line%E2%80%93sphere_intersection
-                let offset = *o - *center;
-                let initial = -d.dot(&offset);
-                let discriminant = d.dot(&offset).powi(2) - offset.length().powi(2) + radius.powi(2);
+                // The sphere is composed of all points p such that ||p - center||^2 = radius^2.
+                // The ray is composed of all points p such that
+                // p = ray.origin + distance * ray.direction, for all d >= 0.
+                // Any points of intersection will satisfy both equations, i.e.
+                // ||ray.origin + distance * ray.direction - center||^2 = radius^2.
+                // After some simplification, this can be solved with the quadratic formula.
+                // See: http://en.wikipedia.org/wiki/Line%E2%80%93sphere_intersection
+                let offset = ray.origin - *center;
+                let initial = -ray.direction.dot(&offset);
+                let discriminant = ray.direction.dot(&offset).powi(2) - offset.length().powi(2) + radius.powi(2);
                 if discriminant < 0.0 {
                     None
                 } else {
@@ -346,18 +352,18 @@ impl SceneObject {
                         Some(farther_distance)
                     } else {
                         Some(closer_distance)
-                    }.map(|dist| *o + d.times(dist))
+                    }.map(|dist| ray.origin + ray.direction.times(dist))
                 }
             },
             Shape::Plane {ref point, ref normal} => {
-                // http://en.wikipedia.org/wiki/Line%E2%80%93plane_intersection
-                let offset = (*point - *o).dot(normal);
-                let divergence = d.dot(normal);
+                // See: http://en.wikipedia.org/wiki/Line%E2%80%93plane_intersection
+                let offset = (*point - ray.origin).dot(normal);
+                let divergence = ray.direction.dot(normal);
                 if divergence.abs() < EPSILON {
                     // line is parallel to plane
                     if offset.abs() < EPSILON {
                         // ray intersects plane everywhere, so we return the start of the ray
-                        Some(o.clone())
+                        Some(ray.origin.clone())
                     } else {
                         // ray does not intersect plane
                         None
@@ -369,7 +375,7 @@ impl SceneObject {
                         None
                     } else {
                         // intersects plane at one point
-                        Some(*o + d.times(distance))
+                        Some(ray.origin + ray.direction.times(distance))
                     }
                 }
             },
@@ -379,14 +385,14 @@ impl SceneObject {
                 let e1 = *p2 - *p1;
                 let e2 = *p3 - *p1;
                 // Begin calculating determinant - also used to calculate u parameter
-                let p = d.cross(&e2);
+                let p = ray.direction.cross(&e2);
                 // if determinant is near zero, ray lies in plane of triangle
                 let det = e1.dot(&p);
                 if det.abs() < EPSILON { return None; }
                 let inv_det = 1.0 / det;
 
                 // Calculate distance from P1 to ray origin
-                let p1_dist = *o - *p1;
+                let p1_dist = ray.origin - *p1;
 
                 // Calculate u parameter and test bound
                 let u = p1_dist.dot(&p) * inv_det;
@@ -396,14 +402,14 @@ impl SceneObject {
                 // Prepare to test v parameter
                 let q = p1_dist.cross(&e1);
                 // Calculate V parameter and test bound
-                let v = d.dot(&q) * inv_det;
+                let v = ray.direction.dot(&q) * inv_det;
                 // The intersection lies outside of the triangle
                 if v < 0.0 || u + v  > 1.0 { return None; }
 
                 let t = e2.dot(&q) * inv_det;
 
                 if t > EPSILON { // ray intersection
-                    return Some(*o + d.times(t));
+                    return Some(ray.origin + ray.direction.times(t));
                 }
 
                 // No hit
