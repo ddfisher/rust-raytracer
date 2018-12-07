@@ -3,15 +3,15 @@
 
 extern crate image;
 
-use std::vec::Vec;
-use std::f32::consts;
-use std::io::{BufRead, BufReader};
-use std::fs::File;
-use std::path::Path;
-use std::collections::HashMap;
 use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::f32::consts;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::iter;
-use std::ops::{Add, Sub, Mul};
+use std::ops::{Add, Mul, Sub};
+use std::path::Path;
+use std::vec::Vec;
 
 // TODO: fully support .obj files
 // TODO: support .mtl files
@@ -26,7 +26,13 @@ fn main() -> Result<(), std::io::Error> {
         let pathname = format!("./output/scene{:02}.png", i);
         let path = Path::new(&pathname);
         let image = raytrace(consts::PI * 2.0 * (i as f32 / angles as f32));
-        image::save_buffer(&path, &image.to_pixels()[..], image.width, image.height, image::RGB(8))?;
+        image::save_buffer(
+            &path,
+            &image.to_pixels()[..],
+            image.width,
+            image.height,
+            image::RGB(8),
+        )?;
         println!("Scene {} complete.", i);
     }
 
@@ -55,20 +61,32 @@ fn raytrace(orientation: f32) -> Image {
 struct Color {
     red: u8,
     green: u8,
-    blue: u8
+    blue: u8,
 }
 
 impl Color {
     fn new(r: u8, g: u8, b: u8) -> Color {
-        Color { red: r, green: g, blue: b }
+        Color {
+            red: r,
+            green: g,
+            blue: b,
+        }
     }
 
     fn black() -> Color {
-        Color {red: 0, green: 0, blue: 0}
+        Color {
+            red: 0,
+            green: 0,
+            blue: 0,
+        }
     }
 
     fn white() -> Color {
-        Color {red: 0xFF, green: 0xFF, blue: 0xFF}
+        Color {
+            red: 0xFF,
+            green: 0xFF,
+            blue: 0xFF,
+        }
     }
 
     fn bytes(self) -> Vec<u8> {
@@ -81,9 +99,9 @@ impl Add for Color {
 
     fn add(self, other: Color) -> Color {
         Color {
-            red:   self.red.saturating_add(other.red),
+            red: self.red.saturating_add(other.red),
             green: self.green.saturating_add(other.green),
-            blue:  self.blue.saturating_add(other.blue)
+            blue: self.blue.saturating_add(other.blue),
         }
     }
 }
@@ -93,9 +111,9 @@ impl Sub for Color {
 
     fn sub(self, other: Color) -> Color {
         Color {
-            red:   self.red.saturating_sub(other.red),
+            red: self.red.saturating_sub(other.red),
             green: self.green.saturating_sub(other.green),
-            blue:  self.blue.saturating_sub(other.blue)
+            blue: self.blue.saturating_sub(other.blue),
         }
     }
 }
@@ -107,13 +125,17 @@ impl Mul<f32> for Color {
         fn mul_sat(n: u8, f: f32) -> u8 {
             let p = f32::from(n) * f;
             let max: u8 = u8::max_value();
-            if p < f32::from(max) { p as u8 } else { 0xFF }
+            if p < f32::from(max) {
+                p as u8
+            } else {
+                0xFF
+            }
         }
 
         Color {
-            red:   mul_sat(self.red,   f),
+            red: mul_sat(self.red, f),
             green: mul_sat(self.green, f),
-            blue:  mul_sat(self.blue,  f)
+            blue: mul_sat(self.blue, f),
         }
     }
 }
@@ -121,7 +143,7 @@ impl Mul<f32> for Color {
 struct Image {
     width: u32,
     height: u32,
-    pixels: Vec<Color>
+    pixels: Vec<Color>,
 }
 
 impl Image {
@@ -129,7 +151,9 @@ impl Image {
         Image {
             width,
             height,
-            pixels: iter::repeat(Color::black()).take((width * height) as usize).collect()
+            pixels: iter::repeat(Color::black())
+                .take((width * height) as usize)
+                .collect(),
         }
     }
 
@@ -148,7 +172,7 @@ impl Image {
 struct Point {
     x: f32,
     y: f32,
-    z: f32
+    z: f32,
 }
 
 impl Point {
@@ -164,7 +188,7 @@ impl Sub<Point> for Point {
         Vector {
             dx: self.x - other.x,
             dy: self.y - other.y,
-            dz: self.z - other.z
+            dz: self.z - other.z,
         }
     }
 }
@@ -173,7 +197,7 @@ impl Sub<Point> for Point {
 struct Vector {
     dx: f32,
     dy: f32,
-    dz: f32
+    dz: f32,
 }
 
 impl Vector {
@@ -186,7 +210,7 @@ impl Vector {
         Vector {
             dx: self.dx / length,
             dy: self.dy / length,
-            dz: self.dz / length
+            dz: self.dz / length,
         }
     }
 
@@ -198,7 +222,7 @@ impl Vector {
         Vector {
             dx: self.dy * other.dz - self.dz * other.dy,
             dy: self.dz * other.dx - self.dx * other.dz,
-            dz: self.dx * other.dy - self.dy * other.dx
+            dz: self.dx * other.dy - self.dy * other.dx,
         }
     }
 
@@ -206,7 +230,7 @@ impl Vector {
         Vector {
             dx: self.dx * scalar,
             dy: self.dy * scalar,
-            dz: self.dz * scalar
+            dz: self.dz * scalar,
         }
     }
 }
@@ -218,7 +242,7 @@ impl Add for Vector {
         Vector {
             dx: self.dx + other.dx,
             dy: self.dy + other.dy,
-            dz: self.dz + other.dz
+            dz: self.dz + other.dz,
         }
     }
 }
@@ -230,7 +254,7 @@ impl Sub for Vector {
         Vector {
             dx: self.dx - other.dx,
             dy: self.dy - other.dy,
-            dz: self.dz - other.dz
+            dz: self.dz - other.dz,
         }
     }
 }
@@ -242,7 +266,7 @@ impl Add<Vector> for Point {
         Point {
             x: self.x + rel.dx,
             y: self.y + rel.dy,
-            z: self.z + rel.dz
+            z: self.z + rel.dz,
         }
     }
 }
@@ -253,14 +277,14 @@ impl PartialEq for OrderedF32 {
     fn eq(&self, &OrderedF32(other): &OrderedF32) -> bool {
         let &OrderedF32(s) = self;
         match (s.is_nan(), other.is_nan()) {
-            (true, true)   => true,
+            (true, true) => true,
             (false, false) => s == other,
-            (_, _)         => false,
+            (_, _) => false,
         }
     }
 }
 
-impl Eq for OrderedF32{}
+impl Eq for OrderedF32 {}
 
 impl PartialOrd for OrderedF32 {
     fn partial_cmp(&self, other: &OrderedF32) -> Option<Ordering> {
@@ -272,39 +296,36 @@ impl Ord for OrderedF32 {
     fn cmp(&self, &OrderedF32(other): &OrderedF32) -> Ordering {
         let &OrderedF32(s) = self;
         match (s.is_nan(), other.is_nan()) {
-            (true, true)   => Ordering::Equal,
-            (true, false)  => Ordering::Less,
-            (false, true)  => Ordering::Greater,
-            (false, false) => if s == other { Ordering::Equal } else if s < other { Ordering::Less } else { Ordering::Greater }
+            (true, true) => Ordering::Equal,
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Greater,
+            (false, false) => {
+                if s == other {
+                    Ordering::Equal
+                } else if s < other {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                }
+            }
         }
     }
 }
 
 struct Ray {
     origin: Point,
-    direction: Vector
+    direction: Vector,
 }
 
 struct SceneObject {
     shape: Shape,
-    properties: MaterialProperties
+    properties: MaterialProperties,
 }
 
-
 enum Shape {
-    Sphere {
-        center: Point,
-        radius: f32
-    },
-    Plane {
-        point: Point,
-        normal: Vector
-    },
-    Triangle {
-        p1: Point,
-        p2: Point,
-        p3: Point
-    }
+    Sphere { center: Point, radius: f32 },
+    Plane { point: Point, normal: Vector },
+    Triangle { p1: Point, p2: Point, p3: Point },
 }
 
 struct MaterialProperties {
@@ -314,7 +335,7 @@ struct MaterialProperties {
     diffuse: f32,
     ambient: f32,
     shininess: f32,
-    reflectivity: f32
+    reflectivity: f32,
 }
 
 // TODO: play with other values of epsilon
@@ -327,7 +348,10 @@ impl SceneObject {
     fn hit(&self, ray: &Ray) -> Option<Point> {
         // TODO: optimize
         match self.shape {
-            Shape::Sphere {ref center, ref radius} => {
+            Shape::Sphere {
+                ref center,
+                ref radius,
+            } => {
                 // The sphere is composed of all points p such that ||p - center||^2 = radius^2.
                 // The ray is composed of all points p such that
                 // p = ray.origin + distance * ray.direction, for all d >= 0.
@@ -337,7 +361,8 @@ impl SceneObject {
                 // See: http://en.wikipedia.org/wiki/Line%E2%80%93sphere_intersection
                 let offset = ray.origin - *center;
                 let initial = -ray.direction.dot(&offset);
-                let discriminant = ray.direction.dot(&offset).powi(2) - offset.length().powi(2) + radius.powi(2);
+                let discriminant =
+                    ray.direction.dot(&offset).powi(2) - offset.length().powi(2) + radius.powi(2);
                 if discriminant < 0.0 {
                     None
                 } else {
@@ -352,10 +377,14 @@ impl SceneObject {
                         Some(farther_distance)
                     } else {
                         Some(closer_distance)
-                    }.map(|dist| ray.origin + ray.direction.times(dist))
+                    }
+                    .map(|dist| ray.origin + ray.direction.times(dist))
                 }
-            },
-            Shape::Plane {ref point, ref normal} => {
+            }
+            Shape::Plane {
+                ref point,
+                ref normal,
+            } => {
                 // See: http://en.wikipedia.org/wiki/Line%E2%80%93plane_intersection
                 let offset = (*point - ray.origin).dot(normal);
                 let divergence = ray.direction.dot(normal);
@@ -378,8 +407,12 @@ impl SceneObject {
                         Some(ray.origin + ray.direction.times(distance))
                     }
                 }
-            },
-            Shape::Triangle {ref p1, ref p2, ref p3} => {
+            }
+            Shape::Triangle {
+                ref p1,
+                ref p2,
+                ref p3,
+            } => {
                 // http://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
                 // Find vectors for two edges sharing P1
                 let e1 = *p2 - *p1;
@@ -388,7 +421,9 @@ impl SceneObject {
                 let p = ray.direction.cross(&e2);
                 // if determinant is near zero, ray lies in plane of triangle
                 let det = e1.dot(&p);
-                if det.abs() < EPSILON { return None; }
+                if det.abs() < EPSILON {
+                    return None;
+                }
                 let inv_det = 1.0 / det;
 
                 // Calculate distance from P1 to ray origin
@@ -397,18 +432,23 @@ impl SceneObject {
                 // Calculate u parameter and test bound
                 let u = p1_dist.dot(&p) * inv_det;
                 // The intersection lies outside of the triangle
-                if u < 0.0 || u > 1.0 { return None; }
+                if u < 0.0 || u > 1.0 {
+                    return None;
+                }
 
                 // Prepare to test v parameter
                 let q = p1_dist.cross(&e1);
                 // Calculate V parameter and test bound
                 let v = ray.direction.dot(&q) * inv_det;
                 // The intersection lies outside of the triangle
-                if v < 0.0 || u + v  > 1.0 { return None; }
+                if v < 0.0 || u + v > 1.0 {
+                    return None;
+                }
 
                 let t = e2.dot(&q) * inv_det;
 
-                if t > EPSILON { // ray intersection
+                if t > EPSILON {
+                    // ray intersection
                     return Some(ray.origin + ray.direction.times(t));
                 }
 
@@ -420,11 +460,13 @@ impl SceneObject {
 
     fn normal_at(&self, point: &Point) -> Vector {
         match self.shape {
-            Shape::Sphere {ref center, ..} => {
-                (*point - *center).normalized()
-            },
-            Shape::Plane {ref normal, ..} => *normal,
-            Shape::Triangle {ref p1, ref p2, ref p3} => {
+            Shape::Sphere { ref center, .. } => (*point - *center).normalized(),
+            Shape::Plane { ref normal, .. } => *normal,
+            Shape::Triangle {
+                ref p1,
+                ref p2,
+                ref p3,
+            } => {
                 let e1 = *p2 - *p1;
                 let e2 = *p3 - *p1;
                 e1.cross(&e2).normalized()
@@ -440,8 +482,8 @@ impl SceneObject {
     // TODO: allow coloring to differ by object
     fn color_at(&self, point: &Point) -> &Color {
         match self.shape {
-            Shape::Sphere {..} => &self.properties.color_primary,
-            Shape::Plane {..} => {
+            Shape::Sphere { .. } => &self.properties.color_primary,
+            Shape::Plane { .. } => {
                 // TODO: make this work for non-horizontal grids
                 let grid_size = 0.5;
                 let x = (point.x < 0.0) ^ (point.x.abs() % (grid_size * 2.0) < grid_size);
@@ -451,26 +493,28 @@ impl SceneObject {
                 } else {
                     &self.properties.color_secondary
                 }
-            },
-            Shape::Triangle {..} => &self.properties.color_primary
+            }
+            Shape::Triangle { .. } => &self.properties.color_primary,
         }
     }
 }
 
 struct Scene {
     objects: Vec<SceneObject>,
-    lights: Vec<Light>
+    lights: Vec<Light>,
 }
 
 impl Scene {
     fn hit(&self, ray: &Ray) -> Option<(Point, &SceneObject)> {
-        self.objects.iter()
-            .filter_map(|obj| obj.hit(ray).map(|p| (p,obj)))
-            .min_by_key(|&(ref p,_)| OrderedF32(p.distance(ray.origin)))
+        self.objects
+            .iter()
+            .filter_map(|obj| obj.hit(ray).map(|p| (p, obj)))
+            .min_by_key(|&(ref p, _)| OrderedF32(p.distance(ray.origin)))
     }
 
     fn hit_any(&self, ray: &Ray, ignore_obj: &SceneObject) -> bool {
-        self.objects.iter()
+        self.objects
+            .iter()
             .filter(|&obj| (obj as *const SceneObject) != (ignore_obj as *const SceneObject)) // pointer equality
             .any(|obj| obj.hit(ray).is_some())
     }
@@ -481,22 +525,19 @@ enum Light {
     //     point: Point,
     //     intensity: f32
     // },
-    Direction {
-        direction: Vector,
-        intensity: f32
-    }
+    Direction { direction: Vector, intensity: f32 },
 }
 
 impl Light {
     fn vector_for(&self, _: &Point) -> Vector {
         match self {
-            Light::Direction {ref direction, ..} => direction.normalized().times(-1.0)
+            Light::Direction { ref direction, .. } => direction.normalized().times(-1.0),
         }
     }
 
     fn intensity_for(&self, _: &Point) -> f32 {
         match self {
-            Light::Direction {intensity, ..} => *intensity
+            Light::Direction { intensity, .. } => *intensity,
         }
     }
 }
@@ -506,66 +547,80 @@ fn pixel_to_ray(x: u32, y: u32, width: u32, height: u32, orientation: f32) -> Ra
     let camera = Point {
         x: 7.0 * orientation.sin(),
         y: 0.5,
-        z: -7.0 * orientation.cos()
+        z: -7.0 * orientation.cos(),
     };
     let fov_spread = 1.0;
     Ray {
-        direction:
-            (Point {
-            x: (x as f32 / width as f32 * fov_spread - fov_spread / 2.0) * orientation.cos() + 6.0 * orientation.sin(),
+        direction: (Point {
+            x: (x as f32 / width as f32 * fov_spread - fov_spread / 2.0) * orientation.cos()
+                + 6.0 * orientation.sin(),
             y: (height - y) as f32 / height as f32 * fov_spread - fov_spread / 2.0 + 0.5,
-            z: (x as f32 / width as f32 * fov_spread - fov_spread / 2.0) * orientation.sin() - 6.0 * orientation.cos()
-        } - camera).normalized(),
-        origin: camera
+            z: (x as f32 / width as f32 * fov_spread - fov_spread / 2.0) * orientation.sin()
+                - 6.0 * orientation.cos(),
+        } - camera)
+            .normalized(),
+        origin: camera,
     }
 }
 
 fn setup_scene() -> Scene {
     let dodecahedron = parse_simple_obj_file("scene/dodecahedron.obj");
     let mut objs = vec![
-            SceneObject {
-                shape: Shape::Sphere {
-                    center: Point {x:3.0, y:0.0, z:0.0},
-                    radius: 0.5
+        SceneObject {
+            shape: Shape::Sphere {
+                center: Point {
+                    x: 3.0,
+                    y: 0.0,
+                    z: 0.0,
                 },
-                properties: MaterialProperties {
-                    color_primary: Color {
-                        red: 0x00,
-                        green: 0xFF,
-                        blue: 0x00
-                    },
-                    color_secondary: Color::black(),
-                    specular: 1.0,
-                    diffuse: 0.8,
-                    ambient: 0.2,
-                    shininess: 13.0,
-                    reflectivity: 0.5
-                }
+                radius: 0.5,
             },
-            SceneObject {
-                shape: Shape::Plane {
-                    point: Point {x:0.0, y:-2.0, z:0.0},
-                    normal: Vector {dx: 0.0, dy: 1.0, dz:0.0}
+            properties: MaterialProperties {
+                color_primary: Color {
+                    red: 0x00,
+                    green: 0xFF,
+                    blue: 0x00,
                 },
-                properties: MaterialProperties {
-                    color_primary: Color {
-                        red: 0x50,
-                        green: 0x30,
-                        blue: 0xA0
-                    },
-                    color_secondary: Color {
-                        red: 0x50,
-                        green: 0x30,
-                        blue: 0xA0
-                    },
-                    specular: 0.0,
-                    diffuse: 1.0,
-                    ambient: 0.2,
-                    shininess: 2.0,
-                    reflectivity: 0.0
-                }
+                color_secondary: Color::black(),
+                specular: 1.0,
+                diffuse: 0.8,
+                ambient: 0.2,
+                shininess: 13.0,
+                reflectivity: 0.5,
             },
-        ];
+        },
+        SceneObject {
+            shape: Shape::Plane {
+                point: Point {
+                    x: 0.0,
+                    y: -2.0,
+                    z: 0.0,
+                },
+                normal: Vector {
+                    dx: 0.0,
+                    dy: 1.0,
+                    dz: 0.0,
+                },
+            },
+            properties: MaterialProperties {
+                color_primary: Color {
+                    red: 0x50,
+                    green: 0x30,
+                    blue: 0xA0,
+                },
+                color_secondary: Color {
+                    red: 0x50,
+                    green: 0x30,
+                    blue: 0xA0,
+                },
+                specular: 0.0,
+                diffuse: 1.0,
+                ambient: 0.2,
+                shininess: 2.0,
+                reflectivity: 0.0,
+            },
+        },
+    ];
     objs.extend(dodecahedron.into_iter());
     Scene {
         objects: objs,
@@ -574,19 +629,19 @@ fn setup_scene() -> Scene {
                 direction: Vector {
                     dx: 0.0,
                     dy: -1.0,
-                    dz: 2.0
+                    dz: 2.0,
                 },
-                intensity: 0.2
+                intensity: 0.2,
             },
             Light::Direction {
                 direction: Vector {
                     dx: 1.5,
                     dy: -3.0,
-                    dz: 1.0
+                    dz: 1.0,
                 },
-                intensity: 0.8
-            }
-        ]
+                intensity: 0.8,
+            },
+        ],
     }
 }
 
@@ -605,31 +660,40 @@ fn ray_to_color(ray: &Ray, scene: &Scene, bounces: u32) -> Color {
         (diffuse_color + specular_color) * light.intensity_for(point)
     }
 
-
     // TODO: remove duplicate normal calls
     match scene.hit(ray) {
         Some((point, obj)) => {
             let ambient = *obj.color_at(&point) * obj.properties.ambient;
-            let local_color = ambient + scene.lights.iter()
-                .filter(|l| {
-                    let purturbed_point = point + obj.normal_at(&point).times(SELF_INTERSECT_OFFSET);
-                    !scene.hit_any(&Ray {direction: l.vector_for(&purturbed_point), origin: purturbed_point}, obj)
-                })
-                .map(|l| light_contribution(l, &point, obj, ray))
-                .fold(Color::black(), |a, b| a + b);
+            let local_color = ambient
+                + scene
+                    .lights
+                    .iter()
+                    .filter(|l| {
+                        let purturbed_point =
+                            point + obj.normal_at(&point).times(SELF_INTERSECT_OFFSET);
+                        !scene.hit_any(
+                            &Ray {
+                                direction: l.vector_for(&purturbed_point),
+                                origin: purturbed_point,
+                            },
+                            obj,
+                        )
+                    })
+                    .map(|l| light_contribution(l, &point, obj, ray))
+                    .fold(Color::black(), |a, b| a + b);
             if bounces >= MAX_BOUNCES {
                 local_color
             } else {
                 let purturbed_point = point + obj.normal_at(&point).times(SELF_INTERSECT_OFFSET);
                 let reflected_ray = Ray {
                     origin: purturbed_point,
-                    direction: obj.reflection_at(&point, &ray.direction)
+                    direction: obj.reflection_at(&point, &ray.direction),
                 };
                 let reflection_color = ray_to_color(&reflected_ray, scene, bounces + 1);
-                reflection_color * obj.properties.reflectivity + local_color// * (1.0 - obj.properties.reflectivity) // XXX
+                reflection_color * obj.properties.reflectivity + local_color // * (1.0 - obj.properties.reflectivity) // XXX
             }
-        },
-        None => Color::black()
+        }
+        None => Color::black(),
     }
 }
 
@@ -643,36 +707,49 @@ fn parse_simple_obj_file(filename: &str) -> Vec<SceneObject> {
     for line in file.lines() {
         let l = line.unwrap();
         if l.starts_with("v ") {
-            let coords: Vec<f32> = l.split(' ').skip(1).filter_map(|s| str::parse(s).ok()).collect();
+            let coords: Vec<f32> = l
+                .split(' ')
+                .skip(1)
+                .filter_map(|s| str::parse(s).ok())
+                .collect();
             assert!(coords.len() == 3);
-            vertices.insert(vertex_counter, Point {
-                x: coords[0],
-                y: coords[1],
-                z: coords[2]
-            });
+            vertices.insert(
+                vertex_counter,
+                Point {
+                    x: coords[0],
+                    y: coords[1],
+                    z: coords[2],
+                },
+            );
             vertex_counter += 1;
         } else if l.starts_with("f ") {
-            let points: Vec<&Point> = l.split(' ').skip(1).map(|w| chop(w, '/')).filter_map(|s| str::parse::<u32>(s).ok()).filter_map(|p| vertices.get(&p)).collect();
+            let points: Vec<&Point> = l
+                .split(' ')
+                .skip(1)
+                .map(|w| chop(w, '/'))
+                .filter_map(|s| str::parse::<u32>(s).ok())
+                .filter_map(|p| vertices.get(&p))
+                .collect();
             assert!(points.len() == 3);
             objs.push(SceneObject {
                 shape: Shape::Triangle {
                     p1: *points[0],
                     p2: *points[1],
-                    p3: *points[2]
+                    p3: *points[2],
                 },
                 properties: MaterialProperties {
                     color_primary: Color {
                         red: 0xFF,
                         green: 0x00,
-                        blue: 0x00
+                        blue: 0x00,
                     },
                     color_secondary: Color::black(),
                     specular: 1.0,
                     diffuse: 0.8,
                     ambient: 0.2,
                     shininess: 13.0,
-                    reflectivity: 0.5
-                }
+                    reflectivity: 0.5,
+                },
             });
         }
     }
