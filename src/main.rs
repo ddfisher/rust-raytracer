@@ -21,9 +21,9 @@ use std::vec::Vec;
 // TODO: make GUI where you can move camera around
 
 fn main() -> Result<(), std::io::Error> {
-    let angles = 64u32;
+    let angles = 128u32;
     for i in 0u32..angles {
-        let pathname = format!("./output/scene{:02}.png", i);
+        let pathname = format!("./output/scene{:03}.png", i);
         let path = Path::new(&pathname);
         let image = raytrace(consts::PI * 2.0 * (i as f32 / angles as f32));
         image::save_buffer(
@@ -521,10 +521,6 @@ impl Scene {
 }
 
 enum Light {
-    // Point {
-    //     point: Point,
-    //     intensity: f32
-    // },
     Direction { direction: Vector, intensity: f32 },
 }
 
